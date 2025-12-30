@@ -45,9 +45,48 @@ class MainSimulator:
         except Exception as e:
             print(f"✗ Generate endpoint failed: {e}")
 
+    async def test_generate_endpoint_with_example_agent(self):
+        """Test the /api/generate endpoint with /example agent activation."""
+        print("Testing /api/generate with /example agent...")
+        try:
+            response = self.client.generate(model="qwen2.5-coder:1.5b", prompt="/example Hello, world!")
+            print("Generate response:", response)
+            # Basic validation
+            if self._is_valid_generate_response_with_agent(response):
+                print("✓ Generate endpoint with agent returned proper response")
+            else:
+                print("✗ Generate endpoint with agent response invalid")
+        except Exception as e:
+            print(f"✗ Generate endpoint with agent failed: {e}")
+
+    async def test_generate_endpoint_streaming(self):
+        """Test the /api/generate endpoint with streaming."""
+        print("Testing /api/generate with streaming...")
+        try:
+            stream = self.client.generate(model="qwen2.5-coder:1.5b", prompt="Hello, world!", stream=True)
+            chunks = []
+            for chunk in stream:
+                chunks.append(chunk)
+                print(f"Received chunk: {chunk}")
+            # Basic validation
+            if self._is_valid_streaming_response(chunks):
+                print("✓ Generate endpoint streaming returned proper response")
+            else:
+                print("✗ Generate endpoint streaming response invalid")
+        except Exception as e:
+            print(f"✗ Generate endpoint streaming failed: {e}")
+
     def _is_valid_generate_response(self, response):
         """Validate the generate response."""
         return isinstance(response, dict) and "response" in response
+
+    def _is_valid_generate_response_with_agent(self, response):
+        """Validate the generate response with agent modifications."""
+        if not isinstance(response, dict) or "response" not in response:
+            return False
+        content = response["response"]
+        # Check if it ends with the suffix added by the agent
+        return content.endswith(" [processed by example agent]")
 
     async def test_tags_endpoint(self):
         """Test the /api/tags endpoint."""
@@ -101,6 +140,23 @@ class MainSimulator:
         except Exception as e:
             print(f"✗ Chat endpoint with agent failed: {e}")
 
+    async def test_chat_endpoint_streaming(self):
+        """Test the /api/chat endpoint with streaming."""
+        print("Testing /api/chat with streaming...")
+        try:
+            stream = self.client.chat(model="qwen2.5-coder:1.5b", messages=[{"role": "user", "content": "Hello, world!"}], stream=True)
+            chunks = []
+            for chunk in stream:
+                chunks.append(chunk)
+                print(f"Received chunk: {chunk}")
+            # Basic validation
+            if self._is_valid_streaming_response(chunks):
+                print("✓ Chat endpoint streaming returned proper response")
+            else:
+                print("✗ Chat endpoint streaming response invalid")
+        except Exception as e:
+            print(f"✗ Chat endpoint streaming failed: {e}")
+
     def _is_valid_chat_response_with_agent(self, response):
         """Validate the chat response with agent modifications."""
         if not isinstance(response, dict) or "message" not in response or "content" not in response["message"]:
@@ -108,6 +164,19 @@ class MainSimulator:
         content = response["message"]["content"]
         # Check if it ends with the suffix added by the agent
         return content.endswith(" [processed by example agent]")
+
+    def _is_valid_streaming_response(self, chunks):
+        """Validate the streaming response chunks."""
+        if not chunks:
+            return False
+        # Check that all chunks are dicts and at least one has 'done': True
+        has_done = False
+        for chunk in chunks:
+            if not isinstance(chunk, dict):
+                return False
+            if chunk.get("done"):
+                has_done = True
+        return has_done
 
     async def test_plugins_endpoint(self):
         """Test the /plugins endpoint."""
@@ -131,14 +200,57 @@ class MainSimulator:
     async def run_all_tests(self):
         """Run all endpoint tests."""
         self.start_server()
+        test_results = []
         try:
-            await self.test_generate_endpoint()
-            await self.test_tags_endpoint()
-            await self.test_health_endpoint()
-            await self.test_plugins_endpoint()
-            await self.test_chat_endpoint_with_example_agent()
+            test_results.append(("Generate Endpoint", await self._run_test(self.test_generate_endpoint)))
+            test_results.append(("Generate with Agent", await self._run_test(self.test_generate_endpoint_with_example_agent)))
+            test_results.append(("Generate Streaming", await self._run_test(self.test_generate_endpoint_streaming)))
+            test_results.append(("Tags Endpoint", await self._run_test(self.test_tags_endpoint)))
+            test_results.append(("Health Endpoint", await self._run_test(self.test_health_endpoint)))
+            test_results.append(("Plugins Endpoint", await self._run_test(self.test_plugins_endpoint)))
+            test_results.append(("Chat with Agent", await self._run_test(self.test_chat_endpoint_with_example_agent)))
+            test_results.append(("Chat Streaming", await self._run_test(self.test_chat_endpoint_streaming)))
         finally:
             self.stop_server()
+
+        # Print total report
+        self._print_test_report(test_results)
+
+    async def _run_test(self, test_func):
+        """Run a single test and return success status."""
+        try:
+            await test_func()
+            return True
+        except Exception as e:
+            print(f"Test failed with exception: {e}")
+            return False
+
+    def _print_test_report(self, test_results):
+        """Print a comprehensive test report."""
+        print("\n" + "="*60)
+        print("TEST REPORT SUMMARY")
+        print("="*60)
+
+        passed = 0
+        total = len(test_results)
+
+        for test_name, success in test_results:
+            status = "✓ PASS" if success else "✗ FAIL"
+            print(f"{test_name:<25} {status}")
+            if success:
+                passed += 1
+
+        print("="*60)
+        print(f"Total Tests: {total}")
+        print(f"Passed: {passed}")
+        print(f"Failed: {total - passed}")
+        print(".1f")
+        print("="*60)
+
+        if passed == total:
+            print("🎉 All tests passed!")
+        else:
+            print("⚠️  Some tests failed. Check output above for details.")
 
 
 async def main():

@@ -26,7 +26,7 @@ class OllamaClient:
         messages: List[Dict[str, Any]],
         stream: bool = False,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> Any:
         """Send a chat request to Ollama."""
         return await self._run_sync(
             self._client.chat,

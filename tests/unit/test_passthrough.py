@@ -74,10 +74,13 @@ class TestPassthroughRouter:
             mock_settings_class.return_value = mock_settings
 
             mock_client = MagicMock()
+            async def mock_aiter_bytes():
+                yield b'{"test": "data"}'
+
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.headers = {'content-type': 'application/json'}
-            mock_response.aiter_bytes = AsyncMock(return_value=b'{"test": "data"}')
+            mock_response.aiter_bytes = mock_aiter_bytes
             mock_client.request = AsyncMock(return_value=mock_response)
             mock_client_class.return_value.__aenter__.return_value = mock_client
 

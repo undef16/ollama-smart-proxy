@@ -4,35 +4,31 @@ from typing import Dict, Any, Union
 import json
 
 from shared.logging import LoggingManager
-from .agent_chain import AgentChain, ChatRequest
+from .agent_chain import GenerateChain, GenerateRequest
 
 
-class ChatRouter:
-    """Router for chat endpoints."""
+class GenerateRouter:
+    """Router for generate endpoints."""
 
     def __init__(self, registry, ollama_client):
-        
-        self.logger = LoggingManager.get_logger(__name__)
-        self.agent_chain = AgentChain(registry, ollama_client)
 
-        self.router = APIRouter(tags=["chat"])
-        self.router.post("/api/chat", response_model=None)(self.chat)
-        
-        # self.router = APIRouter(prefix="/api/chat", tags=["chat"])
-        # self.router.post("/")(self.chat)
+        self.logger = LoggingManager.get_logger(__name__)
+        self.generate_chain = GenerateChain(registry, ollama_client)
+
+        self.router = APIRouter(tags=["generate"])
+        self.router.post("/api/generate", response_model=None)(self.generate)
 
     @classmethod
     def get_router(cls, registry, ollama_client) -> APIRouter:
         """Get the router instance."""
         return cls(registry, ollama_client).router
 
-    async def chat(self, request: ChatRequest) -> Union[Dict[str, Any], StreamingResponse]:
-        """Handle chat requests and forward to Ollama."""
+    async def generate(self, request: GenerateRequest) -> Union[Dict[str, Any], StreamingResponse]:
+        """Handle generate requests and forward to Ollama."""
         try:
-            self.logger.info(f"Chat router - Processing chat request for model: {request.model}")
-            # self.logger.info(f"Chat router - Request messages: {request.messages}")
-            response = await self.agent_chain.process_chat_request(request)
-            self.logger.info(f"Chat router - Chat request processed successfully for model: {request.model}")
+            self.logger.info(f"Generate router - Processing generate request for model: {request.model}")
+            response = await self.generate_chain.process_generate_request(request)
+            self.logger.info(f"Generate router - Generate request processed successfully for model: {request.model}")
 
             # Check if response is a generator (streaming)
             if hasattr(response, '__iter__') and hasattr(response, '__next__'):
@@ -45,5 +41,5 @@ class ChatRouter:
                 # Non-streaming response
                 return response
         except Exception as e:
-            self.logger.error(f"Error processing chat request: {str(e)}")
+            self.logger.error(f"Error processing generate request: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error")

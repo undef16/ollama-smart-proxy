@@ -7,6 +7,7 @@ from src.shared.logging import LoggingManager
 from src.shared.plugin_registry import PluginRegistry
 from src.shared.ollama_client import OllamaClient
 from src.slices.chat.chat_router import ChatRouter
+from src.slices.generate.generate_router import GenerateRouter
 from src.slices.health.health_router import HealthRouter
 from src.slices.passthrough.passthrough_router import PassthroughRouter
 from src.slices.plugins.plugins_router import PluginsRouter
@@ -26,6 +27,7 @@ class OllamaSmartProxyApp:
 
         # Initialize routers
         self.chat_router = ChatRouter.get_router(self.plugin_registry, self.ollama_client)
+        self.generate_router = GenerateRouter.get_router(self.plugin_registry, self.ollama_client)
         self.health_router = HealthRouter.get_router(self.ollama_client)
         self.passthrough_router = PassthroughRouter.get_router(self.ollama_client)
         self.plugins_router = PluginsRouter.get_router(self.plugin_registry)
@@ -39,6 +41,7 @@ class OllamaSmartProxyApp:
 
         # Mount slices
         self.app.include_router(self.chat_router)
+        self.app.include_router(self.generate_router)
         self.app.include_router(self.health_router)
         self.app.include_router(self.plugins_router)
         self.app.include_router(self.passthrough_router)

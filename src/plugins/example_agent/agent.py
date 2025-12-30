@@ -46,7 +46,12 @@ class ExampleAgent(BaseAgent):
             Modified context dictionary.
         """
         if "message" in context and "content" in context["message"]:
+            # Chat response
             content = context["message"]["content"]
             context["message"]["content"] = f"{content} [processed by example agent]"
+        elif "response" in context:
+            # Generate response
+            content = context["response"]
+            context["response"] = f"{content} [processed by example agent]"
 
         return context

@@ -1,4 +1,4 @@
-"""Chat processing logic for the Ollama Smart Proxy."""
+"""Generate processing logic for the Ollama Smart Proxy."""
 
 import re
 import time
@@ -10,23 +10,16 @@ from shared.config import Config
 from shared.logging import LoggingManager
 
 
-class Message(BaseModel):
-    """A chat message."""
-
-    role: str
-    content: str
-
-
-class ChatRequest(BaseModel):
-    """OpenAI-compatible chat request model."""
+class GenerateRequest(BaseModel):
+    """OpenAI-compatible generate request model."""
 
     model: str
-    messages: List[Message]
+    prompt: str
     stream: bool = False
 
 
-class AgentChain:
-    """Handles chat request processing and Ollama forwarding."""
+class GenerateChain:
+    """Handles generate request processing and Ollama forwarding."""
 
     def __init__(self, registry, ollama_client):
         self.registry = registry
@@ -37,10 +30,10 @@ class AgentChain:
         self._cache_ttl = config.model_cache_ttl
 
     def _parse_slash_commands(self, content: str) -> tuple[str, Set[str]]:
-        """Parse slash commands from message content.
+        """Parse slash commands from prompt content.
 
         Args:
-            content: The message content to parse.
+            content: The prompt content to parse.
 
         Returns:
             Tuple of (cleaned_content, set_of_agent_names).
@@ -88,47 +81,43 @@ class AgentChain:
         """
         # Get the actual response from the context
         response = context["response"]
-        self.logger.info(f"Before agent chain response processing: {response.get('message', {}).get('content', 'NO CONTENT')}")
-        
+        self.logger.info(f"Before agent chain response processing: {response.get('response', 'NO RESPONSE')}")
+
         # Process response through each agent
         for agent_name in reversed(agents):
             agent = self.registry.get_agent(agent_name)
             if agent:
                 self.logger.info(f"Processing response through agent: {agent_name}")
-                self.logger.info(f"Response before agent {agent_name}: {response.get('message', {}).get('content', 'NO CONTENT')}")
+                self.logger.info(f"Response before agent {agent_name}: {response.get('response', 'NO RESPONSE')}")
                 response = await agent.on_response(response)
-                self.logger.info(f"Response after agent {agent_name}: {response.get('message', {}).get('content', 'NO CONTENT')}")
+                self.logger.info(f"Response after agent {agent_name}: {response.get('response', 'NO RESPONSE')}")
 
         # Update the context with the modified response
         context["response"] = response
-        self.logger.info(f"After agent chain response processing: {response.get('message', {}).get('content', 'NO CONTENT')}")
+        self.logger.info(f"After agent chain response processing: {response.get('response', 'NO RESPONSE')}")
         return context
 
-    async def process_chat_request(self, chat_request: ChatRequest) -> Any:
-        """Process a chat request and forward to Ollama.
+    async def process_generate_request(self, generate_request: GenerateRequest) -> Any:
+        """Process a generate request and forward to Ollama.
 
         Args:
-            chat_request: The parsed chat request.
+            generate_request: The parsed generate request.
 
         Returns:
             The response from Ollama.
         """
         try:
-            # Extract model and messages
-            model = chat_request.model
-            messages = [msg.model_dump() for msg in chat_request.messages]
+            # Extract model and prompt
+            model = generate_request.model
+            prompt = generate_request.prompt
 
-            self.logger.info(f"Processing chat request for model: {model}")
+            self.logger.info(f"Processing generate request for model: {model}")
 
-            # Parse slash commands from the last user message
+            # Parse slash commands from the prompt
             agents_to_execute = []
-            if messages and messages[-1]["role"] == "user":
-                content = messages[-1]["content"]
-                self.logger.info(f"Processing user message: {content}")
-                cleaned_content, agent_names = self._parse_slash_commands(content)
-                self.logger.info(f"Parsed agent names: {agent_names}, cleaned content: {cleaned_content}")
-                messages[-1]["content"] = cleaned_content
-                agents_to_execute = list(agent_names)
+            cleaned_prompt, agent_names = self._parse_slash_commands(prompt)
+            self.logger.info(f"Parsed agent names: {agent_names}, cleaned prompt: {cleaned_prompt}")
+            agents_to_execute = list(agent_names)
 
             if agents_to_execute:
                 self.logger.info(f"Activating agents: {agents_to_execute}")
@@ -136,8 +125,8 @@ class AgentChain:
             # Create request context
             context = {
                 "model": model,
-                "messages": messages,
-                "stream": chat_request.stream,
+                "prompt": cleaned_prompt,
+                "stream": generate_request.stream,
                 "agents": agents_to_execute
             }
 
@@ -149,14 +138,14 @@ class AgentChain:
 
             # Forward to Ollama
             self.logger.debug(f"Forwarding request to Ollama for model: {context['model']}")
-            response = await self.ollama_client.chat(
+            response = await self.ollama_client.generate(
                 model=context["model"],
-                messages=context["messages"],
+                prompt=context["prompt"],
                 stream=context["stream"]
             )
 
             if context["stream"]:
-                self.logger.info(f"Chat request processed successfully for model: {model} (streaming)")
+                self.logger.info(f"Generate request processed successfully for model: {model} (streaming)")
                 return response
             else:
                 # Create response context
@@ -166,16 +155,16 @@ class AgentChain:
                 }
 
                 # Execute agent chain on response
-                self.logger.info(f"Before agent response processing: {response_context['response'].get('message', {}).get('content', 'NO CONTENT')}")
+                self.logger.info(f"Before agent response processing: {response_context['response'].get('response', 'NO RESPONSE')}")
                 response_context = await self._execute_agent_chain_on_response(
                     agents_to_execute, response_context
                 )
-                self.logger.info(f"After agent response processing: {response_context['response'].get('message', {}).get('content', 'NO CONTENT')}")
+                self.logger.info(f"After agent response processing: {response_context['response'].get('response', 'NO RESPONSE')}")
 
-                self.logger.info(f"Chat request processed successfully for model: {model}")
+                self.logger.info(f"Generate request processed successfully for model: {model}")
                 return response_context["response"]
         except Exception as e:
-            self.logger.error(f"Error processing chat request: {str(e)}")
+            self.logger.error(f"Error processing generate request: {str(e)}")
             raise
 
     async def _ensure_model_loaded(self, model: str) -> None:
