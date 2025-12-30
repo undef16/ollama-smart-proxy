@@ -1,0 +1,14 @@
+{
+  "ollama_host": "localhost",
+  "ollama_port": 11434,
+  "plugins_dir": "src/plugins",
+  "model_cache_ttl": 300,
+  "agent_command_pattern": "/(\\w+)",
+  "server_host": "0.0.0.0",
+  "server_port": 11555,
+  "library_log_levels": {
+    "uvicorn": "WARNING",
+    "uvicorn.access": "WARNING",
+    "fastapi": "WARNING"
+  }
+}
