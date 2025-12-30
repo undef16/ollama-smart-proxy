@@ -21,7 +21,7 @@ A lightweight, async proxy server for Ollama that provides OpenAI-compatible API
 The project follows a vertical slice architecture with a shared kernel:
 
 - **Shared Kernel**: Common services (config, logging, Ollama client, plugin registry)
-- **Slices**: Independent feature areas (chat, health, passthrough, plugins)
+- **Slices**: Independent feature areas (chat, generate, health, passthrough, plugins)
 - **Plugins**: Extensible agent system loaded from `src/plugins/`
 
 ### OOP Design
@@ -46,7 +46,7 @@ See [docs/quickstart.md](docs/quickstart.md) for detailed setup and usage instru
 pip install -r requirements.txt
 
 # Start the proxy
-python -m src.main
+python main.py
 
 # Test with curl
 curl -X POST "http://localhost:11555/api/chat/" \
@@ -59,13 +59,15 @@ curl -X POST "http://localhost:11555/api/chat/" \
 ### Chat Completions
 - `POST /api/chat/` - OpenAI-compatible chat completions with agent support
 
+### Text Generation
+- `POST /api/generate/` - Text generation with agent support
+
 ### Health & Monitoring
 - `GET /health` - Health check for proxy and upstream Ollama
 - `GET /plugins` - List loaded agent plugins
 
 ### Pass-through Endpoints
 - `GET /api/tags` - List available models
-- `POST /api/generate` - Text generation
 - `POST /api/embeddings` - Generate embeddings
 
 ## Configuration
@@ -103,8 +105,9 @@ pytest tests/integration/  # Integration tests
 ### Project Structure
 
 ```
+main.py                     # Application entry point
+
 src/
-├── main.py                 # Application entry point
 ├── shared/                 # Shared kernel
 │   ├── config.py          # Configuration management
 │   ├── logging.py         # Logging setup
@@ -112,6 +115,7 @@ src/
 │   └── plugin_registry.py # Agent loading and management
 ├── slices/                 # Feature slices
 │   ├── chat/              # Chat completions
+│   ├── generate/          # Text generation
 │   ├── health/            # Health monitoring
 │   ├── passthrough/       # Ollama API pass-through
 │   └── plugins/           # Plugin introspection
