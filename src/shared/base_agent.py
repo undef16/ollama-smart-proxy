@@ -27,13 +27,14 @@ class BaseAgent(ABC):
         pass
 
     @abstractmethod
-    async def on_response(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Process the response context after receiving from Ollama.
+    async def on_response(self, request: Dict[str, Any], response: Dict[str, Any]) -> Dict[str, Any]:
+        """Process the response after receiving from Ollama.
 
         Args:
-            context: Response context dictionary containing response data.
+            request: Request context dictionary containing request data.
+            response: Response dictionary from Ollama.
 
         Returns:
-            Modified context dictionary.
+            Modified response dictionary.
         """
         pass

@@ -6,22 +6,29 @@ from typing import Dict, Any
 from pydantic import ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.const import (
+    DEFAULT_OLLAMA_HOST,
+    DEFAULT_OLLAMA_PORT,
+    DEFAULT_PLUGINS_DIR,
+    DEFAULT_MODEL_CACHE_TTL,
+    DEFAULT_AGENT_COMMAND_PATTERN,
+    DEFAULT_SERVER_HOST,
+    DEFAULT_SERVER_PORT,
+    LIBRARY_LOG_LEVELS
+)
+
 
 class Config(BaseSettings):
     """Global configuration settings for the Ollama Smart Proxy."""
 
-    ollama_host: str = "localhost"
-    ollama_port: int = 11434
-    plugins_dir: Path = Path("src/plugins")
-    model_cache_ttl: int = 300
-    agent_command_pattern: str = r"/(\w+)"
-    server_host: str = "0.0.0.0"
-    server_port: int = 11555
-    library_log_levels: Dict[str, str] = {
-        "uvicorn": "WARNING",
-        "uvicorn.access": "WARNING",
-        "fastapi": "WARNING"
-    }
+    ollama_host: str = DEFAULT_OLLAMA_HOST
+    ollama_port: int = DEFAULT_OLLAMA_PORT
+    plugins_dir: Path = Path(DEFAULT_PLUGINS_DIR)
+    model_cache_ttl: int = DEFAULT_MODEL_CACHE_TTL
+    agent_command_pattern: str = DEFAULT_AGENT_COMMAND_PATTERN
+    server_host: str = DEFAULT_SERVER_HOST
+    server_port: int = DEFAULT_SERVER_PORT
+    library_log_levels: Dict[str, str] = LIBRARY_LOG_LEVELS
 
     model_config = SettingsConfigDict(
         protected_namespaces=('settings_',),

@@ -5,6 +5,7 @@ import json
 
 from shared.logging import LoggingManager
 from .agent_chain import GenerateChain, GenerateRequest
+from src.const import HTTP_ERROR
 
 
 class GenerateRouter:
@@ -42,4 +43,4 @@ class GenerateRouter:
                 return response
         except Exception as e:
             self.logger.error(f"Error processing generate request: {str(e)}")
-            raise HTTPException(status_code=500, detail="Internal server error")
+            raise HTTPException(status_code=HTTP_ERROR, detail="Internal server error")

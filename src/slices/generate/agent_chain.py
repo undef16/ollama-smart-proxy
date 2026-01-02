@@ -68,34 +68,32 @@ class GenerateChain:
         return context
 
     async def _execute_agent_chain_on_response(
-        self, agents: List[str], context: Dict[str, Any]
+        self, agents: List[str], request_context: Dict[str, Any], response_context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Execute on_response hooks for agents in reverse sequence.
 
         Args:
             agents: List of agent names to execute (in reverse order).
-            context: Response context to modify.
+            request_context: Original request context.
+            response_context: Response context to modify.
 
         Returns:
             Modified context after all agents have processed it.
         """
         # Get the actual response from the context
-        response = context["response"]
+        response = response_context["response"]
         self.logger.info(f"Before agent chain response processing: {response.get('response', 'NO RESPONSE')}")
 
         # Process response through each agent
         for agent_name in reversed(agents):
             agent = self.registry.get_agent(agent_name)
             if agent:
-                self.logger.info(f"Processing response through agent: {agent_name}")
-                self.logger.info(f"Response before agent {agent_name}: {response.get('response', 'NO RESPONSE')}")
-                response = await agent.on_response(response)
-                self.logger.info(f"Response after agent {agent_name}: {response.get('response', 'NO RESPONSE')}")
+                response = await agent.on_response(request_context, response)
 
         # Update the context with the modified response
-        context["response"] = response
+        response_context["response"] = response
         self.logger.info(f"After agent chain response processing: {response.get('response', 'NO RESPONSE')}")
-        return context
+        return response_context
 
     async def process_generate_request(self, generate_request: GenerateRequest) -> Any:
         """Process a generate request and forward to Ollama.
@@ -157,7 +155,7 @@ class GenerateChain:
                 # Execute agent chain on response
                 self.logger.info(f"Before agent response processing: {response_context['response'].get('response', 'NO RESPONSE')}")
                 response_context = await self._execute_agent_chain_on_response(
-                    agents_to_execute, response_context
+                    agents_to_execute, context, response_context
                 )
                 self.logger.info(f"After agent response processing: {response_context['response'].get('response', 'NO RESPONSE')}")
 

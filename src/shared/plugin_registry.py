@@ -37,21 +37,27 @@ class PluginRegistry:
             if not agent_file.exists():
                 continue
 
-            # Load the module
-            spec = importlib.util.spec_from_file_location(
-                f"plugins.{plugin_dir.name}", agent_file
-            )
-            if spec is None or spec.loader is None:
+            # Load all .py files in the plugin directory as modules
+            for py_file in plugin_dir.glob("*.py"):
+                if py_file.name == "__init__.py":
+                    continue
+                module_name = f"plugins.{plugin_dir.name}.{py_file.stem}"
+                spec = importlib.util.spec_from_file_location(module_name, py_file)
+                if spec is None or spec.loader is None:
+                    continue
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[spec.name] = module
+                spec.loader.exec_module(module)
+
+            # The agent module is now loaded as plugins.{plugin_dir.name}.agent
+            agent_module = sys.modules.get(f"plugins.{plugin_dir.name}.agent")
+            if agent_module is None:
                 continue
 
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[spec.name] = module
-            spec.loader.exec_module(module)
-
-            # Find agent class
+            # Find agent class in the agent module
             agent_class = None
-            for attr_name in dir(module):
-                attr = getattr(module, attr_name)
+            for attr_name in dir(agent_module):
+                attr = getattr(agent_module, attr_name)
                 if (
                     isinstance(attr, type)
                     and issubclass(attr, BaseAgent)
