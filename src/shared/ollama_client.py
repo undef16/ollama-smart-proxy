@@ -12,7 +12,7 @@ class OllamaClient:
     def __init__(self):
         config = Config()
         self._client = ollama.Client(
-            host=f"http://{config.ollama_host}:{config.ollama_port}"
+            host=f"{config.ollama_host}:{config.ollama_port}"
         )
 
     async def _run_sync(self, func, *args, **kwargs) -> Any:

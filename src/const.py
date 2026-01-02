@@ -18,7 +18,8 @@ LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 LIBRARY_LOG_LEVELS = {
     "uvicorn": "WARNING",
     "uvicorn.access": "WARNING",
-    "fastapi": "WARNING"
+    "fastapi": "WARNING",
+    "httpx": "WARNING"
 }
 
 # HTTP status codes
