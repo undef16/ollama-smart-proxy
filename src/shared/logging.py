@@ -3,6 +3,7 @@ import sys
 from typing import Optional
 
 from .config import Config
+from src.const import LOG_FORMAT, LOG_DATE_FORMAT
 
 
 class LoggingManager:
@@ -20,8 +21,8 @@ class LoggingManager:
 
         # Create formatter
         formatter = logging.Formatter(
-            fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S"
+            fmt=LOG_FORMAT,
+            datefmt=LOG_DATE_FORMAT
         )
 
         # Setup console handler

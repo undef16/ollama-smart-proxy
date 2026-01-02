@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from typing import Dict, Any
 
 from shared.logging import LoggingManager
+from src.const import HEALTH_STATUS_HEALTHY, HEALTH_STATUS_UNHEALTHY, HEALTH_PROXY_STATUS_OK, HEALTH_UPSTREAM_STATUS_OK, HEALTH_UPSTREAM_STATUS_ERROR
 
 
 class HealthRouter:
@@ -20,8 +21,8 @@ class HealthRouter:
 
     async def health_check(self) -> Dict[str, Any]:
         """Check health of proxy and upstream Ollama server."""
-        proxy_status = "Ok"
-        upstream_status = "Ok"
+        proxy_status = HEALTH_PROXY_STATUS_OK
+        upstream_status = HEALTH_UPSTREAM_STATUS_OK
 
         try:
             self.logger.debug("Checking upstream Ollama health")
@@ -29,10 +30,10 @@ class HealthRouter:
             await self.ollama_client.list()
             self.logger.debug("Upstream Ollama health check passed")
         except Exception as e:
-            upstream_status = "error"
+            upstream_status = HEALTH_UPSTREAM_STATUS_ERROR
             self.logger.warning(f"Upstream Ollama health check failed: {str(e)}")
 
-        status = "healthy" if upstream_status == "Ok" else "unhealthy"
+        status = HEALTH_STATUS_HEALTHY if upstream_status == HEALTH_UPSTREAM_STATUS_OK else HEALTH_STATUS_UNHEALTHY
         self.logger.info(f"Health check result: {status} (proxy: {proxy_status}, upstream: {upstream_status})")
 
         return {

@@ -8,15 +8,13 @@ from pydantic import BaseModel
 
 from shared.config import Config
 from shared.logging import LoggingManager
-
+from src.const import RESPONSE_FIELD, MODEL_FIELD, PROMPT_FIELD, STREAM_FIELD, AGENTS_FIELD, NO_RESPONSE_PLACEHOLDER
 
 class GenerateRequest(BaseModel):
     """OpenAI-compatible generate request model."""
-
     model: str
     prompt: str
     stream: bool = False
-
 
 class GenerateChain:
     """Handles generate request processing and Ollama forwarding."""
@@ -81,8 +79,8 @@ class GenerateChain:
             Modified context after all agents have processed it.
         """
         # Get the actual response from the context
-        response = response_context["response"]
-        response_content = response.get('response', 'NO RESPONSE')
+        response = response_context[RESPONSE_FIELD]
+        response_content = response.get(RESPONSE_FIELD, NO_RESPONSE_PLACEHOLDER)
         self.logger.debug(f"Before agent chain response processing: {response_content[:200]}{'...' if len(response_content) > 200 else ''}")
 
         # Process response through each agent
@@ -92,8 +90,8 @@ class GenerateChain:
                 response = await agent.on_response(request_context, response)
 
         # Update the context with the modified response
-        response_context["response"] = response
-        response_content = response.get('response', 'NO RESPONSE')
+        response_context[RESPONSE_FIELD] = response
+        response_content = response.get(RESPONSE_FIELD, NO_RESPONSE_PLACEHOLDER)
         self.logger.debug(f"After agent chain response processing: {response_content[:200]}{'...' if len(response_content) > 200 else ''}")
         return response_context
 
@@ -124,10 +122,10 @@ class GenerateChain:
 
             # Create request context
             context = {
-                "model": model,
-                "prompt": cleaned_prompt,
-                "stream": generate_request.stream,
-                "agents": agents_to_execute
+                MODEL_FIELD: model,
+                PROMPT_FIELD: cleaned_prompt,
+                STREAM_FIELD: generate_request.stream,
+                AGENTS_FIELD: agents_to_execute
             }
 
             # Execute agent chain on request
@@ -139,32 +137,32 @@ class GenerateChain:
             # Forward to Ollama
             self.logger.debug(f"Forwarding request to Ollama for model: {context['model']}")
             response = await self.ollama_client.generate(
-                model=context["model"],
-                prompt=context["prompt"],
-                stream=context["stream"]
+                model=context[MODEL_FIELD],
+                prompt=context[PROMPT_FIELD],
+                stream=context[STREAM_FIELD]
             )
 
-            if context["stream"]:
+            if context[STREAM_FIELD]:
                 self.logger.info(f"Generate request processed successfully for model: {model} (streaming)")
                 return response
             else:
                 # Create response context
                 response_context = {
-                    "response": response,
-                    "agents": agents_to_execute
+                    RESPONSE_FIELD: response,
+                    AGENTS_FIELD: agents_to_execute
                 }
 
                 # Execute agent chain on response
-                response_content = response_context['response'].get('response', 'NO RESPONSE')
+                response_content = response_context[RESPONSE_FIELD].get(RESPONSE_FIELD, NO_RESPONSE_PLACEHOLDER)
                 self.logger.debug(f"Before agent response processing: {response_content[:200]}{'...' if len(response_content) > 200 else ''}")
                 response_context = await self._execute_agent_chain_on_response(
                     agents_to_execute, context, response_context
                 )
-                response_content = response_context['response'].get('response', 'NO RESPONSE')
+                response_content = response_context[RESPONSE_FIELD].get(RESPONSE_FIELD, NO_RESPONSE_PLACEHOLDER)
                 self.logger.debug(f"After agent response processing: {response_content[:200]}{'...' if len(response_content) > 200 else ''}")
 
                 self.logger.info(f"Generate request processed successfully for model: {model}")
-                return response_context["response"]
+                return response_context[RESPONSE_FIELD]
         except Exception as e:
             self.logger.error(f"Error processing generate request: {str(e)}")
             raise

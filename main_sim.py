@@ -9,28 +9,21 @@ from dataclasses import dataclass
 import ollama
 import httpx
 from src.shared.config import Config
+from src.const import (
+    DEFAULT_TEST_MODEL, TEST_MODELS_LIST, PROXY_HOST_URL, SERVER_START_TIMEOUT_SEC,
+    HTTP_TIMEOUT_SEC, MAX_RETRY_ATTEMPTS, EXAMPLE_AGENT_SUFFIX_STR,
+    TEST_PROMPT_SIMPLE, TEST_PROMPT_WITH_AGENT, TEST_PROMPT_OPT_POSITIVE, TEST_PROMPT_OPT_NEGATIVE,
+    HEALTH_STATUS_HEALTHY, HEALTH_STATUS_UNHEALTHY, MESSAGE_FIELD, CONTENT_FIELD,
+    RESPONSE_FIELD, DONE_FIELD, STREAM_FIELD, USER_ROLE
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Constants
-DEFAULT_MODEL = "qwen2.5-coder:1.5b"
-DEFAULT_MODEL = "qwen3:8b"
-TEST_MODELS = ["qwen3:8b", "gemma3:4b"]
-PROXY_HOST = "http://localhost"
-SERVER_START_TIMEOUT = 10  # seconds
-HTTP_TIMEOUT = 30  # seconds
-MAX_RETRIES = 3
-EXAMPLE_AGENT_SUFFIX = " [processed by example agent]"
+# Constants are imported from src.const
 
-# Test data
-TEST_PROMPTS = {
-    "simple": "Hello, world!",
-    "example_agent": "/example Hello, world!",
-    "opt_positive": "/opt You are an expert in natural language processing and machine learning. Your primary task is to carefully analyze the provided text input for multiple key aspects. These include but are not limited to: overall sentiment analysis (positive, negative, neutral), extraction of named entities such as people, organizations, locations, dates, and other relevant items, identification of the main topics and subtopics discussed, detection of any potential biases or emotional tones, and summarization of the core message. After analysis, provide a comprehensive report in a well-structured JSON format with sections for each aspect. Ensure the report is objective, accurate, and detailed. Input text for analysis: The movie was fantastic and thrilling.",
-    "opt_negative": "/opt You are an expert in natural language processing and machine learning. Your primary task is to carefully analyze the provided text input for multiple key aspects. These include but are not limited to: overall sentiment analysis (positive, negative, neutral), extraction of named entities such as people, organizations, locations, dates, and other relevant items, identification of the main topics and subtopics discussed, detection of any potential biases or emotional tones, and summarization of the core message. After analysis, provide a comprehensive report in a well-structured JSON format with sections for each aspect. Ensure the report is objective, accurate, and detailed. Input text for analysis: The service was terrible and slow."
-}
+# Test data constants are imported from src.const
 
 @dataclass
 class TestResult:
@@ -43,7 +36,7 @@ class MainSimulator:
 
     def __init__(self):
         self.config = Config()
-        self.proxy_host = PROXY_HOST
+        self.proxy_host = PROXY_HOST_URL
         self.proxy_port = self.config.server_port
         self.server_process: Optional[subprocess.Popen] = None
         self.client: Optional[ollama.Client] = None
@@ -73,7 +66,7 @@ class MainSimulator:
     async def _wait_for_server(self):
         """Wait for the server to be ready."""
         start_time = time.time()
-        while time.time() - start_time < SERVER_START_TIMEOUT:
+        while time.time() - start_time < SERVER_START_TIMEOUT_SEC:
             try:
                 async with httpx.AsyncClient(timeout=httpx.Timeout(1.0)) as client:
                     resp = await client.get(f"{self.proxy_host}:{self.proxy_port}/health")
@@ -81,7 +74,7 @@ class MainSimulator:
                         return
             except (httpx.ConnectError, httpx.TimeoutException):
                 await asyncio.sleep(0.5)
-        raise RuntimeError(f"Server did not start within {SERVER_START_TIMEOUT} seconds")
+        raise RuntimeError(f"Server did not start within {SERVER_START_TIMEOUT_SEC} seconds")
 
     @contextlib.asynccontextmanager
     async def server_context(self):
@@ -95,7 +88,7 @@ class MainSimulator:
     async def _run_test_with_retry(self, test_name: str, test_func, *args, **kwargs) -> TestResult:
         """Run a test with retry logic."""
         last_error = None
-        for attempt in range(MAX_RETRIES):
+        for attempt in range(MAX_RETRY_ATTEMPTS):
             try:
                 logger.info(f"Running test: {test_name} (attempt {attempt + 1})")
                 await test_func(*args, **kwargs)
@@ -103,14 +96,14 @@ class MainSimulator:
             except Exception as e:
                 last_error = e
                 logger.warning(f"Test {test_name} failed on attempt {attempt + 1}: {e}")
-                if attempt < MAX_RETRIES - 1:
+                if attempt < MAX_RETRY_ATTEMPTS - 1:
                     await asyncio.sleep(1)  # Wait before retry
         return TestResult(name=test_name, success=False, error=str(last_error))
 
     async def test_generate_endpoint(self):
         """Test the /api/generate endpoint."""
         assert self.client is not None
-        response = self.client.generate(model=DEFAULT_MODEL, prompt=TEST_PROMPTS["simple"])
+        response = self.client.generate(model=DEFAULT_TEST_MODEL, prompt=TEST_PROMPT_SIMPLE)
         logger.debug(f"Generate response: {response}")
         if not self._is_valid_generate_response(response):
             raise ValueError("Generate endpoint response missing 'response' key or not a dict")
@@ -118,7 +111,7 @@ class MainSimulator:
     async def test_generate_endpoint_with_example_agent(self):
         """Test the /api/generate endpoint with /example agent activation."""
         assert self.client is not None
-        response = self.client.generate(model=DEFAULT_MODEL, prompt=TEST_PROMPTS["example_agent"])
+        response = self.client.generate(model=DEFAULT_TEST_MODEL, prompt=TEST_PROMPT_WITH_AGENT)
         logger.debug(f"Generate with agent response: {response}")
         if not self._is_valid_generate_response_with_agent(response):
             raise ValueError("Generate endpoint with agent response invalid")
@@ -126,10 +119,10 @@ class MainSimulator:
     async def test_generate_endpoint_streaming(self, model: Optional[str] = None):
         """Test the /api/generate endpoint with streaming."""
         assert self.client is not None
-        test_model = model or DEFAULT_MODEL
+        test_model = model or DEFAULT_TEST_MODEL
         logger.info(f"Testing streaming with model: {test_model}")
         
-        stream = self.client.generate(model=test_model, prompt=TEST_PROMPTS["simple"], stream=True)
+        stream = self.client.generate(model=test_model, prompt=TEST_PROMPT_SIMPLE, stream=True)
         chunks = []
         chunk_count = 0
         try:
@@ -154,8 +147,8 @@ class MainSimulator:
         """Test the /api/generate endpoint with /opt agent activation."""
         assert self.client is not None
         if not prompt:
-            prompt = TEST_PROMPTS["simple"].replace("Hello", "/opt Hello")
-        response = self.client.generate(model=DEFAULT_MODEL, prompt=prompt)
+            prompt = TEST_PROMPT_SIMPLE.replace("Hello", "/opt Hello")
+        response = self.client.generate(model=DEFAULT_TEST_MODEL, prompt=prompt)
         logger.debug(f"Generate with optimizer response: {response}")
         if not self._is_valid_generate_response(response):
             raise ValueError("Generate endpoint with optimizer agent response invalid")
@@ -170,7 +163,7 @@ class MainSimulator:
             return False
         content = response["response"]
         # Check if it ends with the suffix added by the agent
-        return content.endswith(EXAMPLE_AGENT_SUFFIX)
+        return content.endswith(EXAMPLE_AGENT_SUFFIX_STR)
 
     async def test_tags_endpoint(self):
         """Test the /api/tags endpoint."""
@@ -186,7 +179,7 @@ class MainSimulator:
 
     async def test_health_endpoint(self):
         """Test the /health endpoint."""
-        async with httpx.AsyncClient(timeout=httpx.Timeout(HTTP_TIMEOUT)) as http_client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(HTTP_TIMEOUT_SEC)) as http_client:
             resp = await http_client.get(f"{self.proxy_host}:{self.proxy_port}/health")
             health_data = resp.json()
             logger.debug(f"Health response: {health_data}")
@@ -195,12 +188,12 @@ class MainSimulator:
 
     def _is_valid_health_response(self, resp, health_data):
         """Validate the health response."""
-        return resp.status_code == 200 and health_data.get("status") in ["healthy", "unhealthy"]
+        return resp.status_code == 200 and health_data.get("status") in [HEALTH_STATUS_HEALTHY, HEALTH_STATUS_UNHEALTHY]
 
     async def test_chat_endpoint_with_example_agent(self):
         """Test the /api/chat endpoint with /example agent activation."""
         assert self.client is not None
-        response = self.client.chat(model=DEFAULT_MODEL, messages=[{"role": "user", "content": TEST_PROMPTS["example_agent"]}])
+        response = self.client.chat(model=DEFAULT_TEST_MODEL, messages=[{"role": USER_ROLE, "content": TEST_PROMPT_WITH_AGENT}])
         logger.debug(f"Chat with agent response: {response}")
         if not self._is_valid_chat_response_with_agent(response):
             raise ValueError("Chat endpoint with agent response invalid")
@@ -209,8 +202,8 @@ class MainSimulator:
         """Test the /api/chat endpoint with /opt agent activation."""
         assert self.client is not None
         if not prompt:
-            prompt = TEST_PROMPTS["simple"].replace("Hello", "/opt Hello")
-        response = self.client.chat(model=DEFAULT_MODEL, messages=[{"role": "user", "content": prompt}])
+            prompt = TEST_PROMPT_SIMPLE.replace("Hello", "/opt Hello")
+        response = self.client.chat(model=DEFAULT_TEST_MODEL, messages=[{"role": USER_ROLE, "content": prompt}])
         logger.debug(f"Chat with optimizer response: {response}")
         if not self._is_valid_chat_response(response):
             raise ValueError("Chat endpoint with optimizer agent response invalid")
@@ -218,10 +211,10 @@ class MainSimulator:
     async def test_chat_endpoint_streaming(self, model: Optional[str] = None):
         """Test the /api/chat endpoint with streaming."""
         assert self.client is not None
-        test_model = model or DEFAULT_MODEL
+        test_model = model or DEFAULT_TEST_MODEL
         logger.info(f"Testing chat streaming with model: {test_model}")
         
-        stream = self.client.chat(model=test_model, messages=[{"role": "user", "content": TEST_PROMPTS["simple"]}], stream=True)
+        stream = self.client.chat(model=test_model, messages=[{"role": USER_ROLE, "content": TEST_PROMPT_SIMPLE}], stream=True)
         chunks = []
         chunk_count = 0
         try:
@@ -244,15 +237,15 @@ class MainSimulator:
 
     def _is_valid_chat_response(self, response):
         """Validate the chat response."""
-        return isinstance(response, dict) and "message" in response and "content" in response["message"]
+        return isinstance(response, dict) and MESSAGE_FIELD in response and CONTENT_FIELD in response[MESSAGE_FIELD]
 
     def _is_valid_chat_response_with_agent(self, response):
         """Validate the chat response with agent modifications."""
-        if not isinstance(response, dict) or "message" not in response or "content" not in response["message"]:
+        if not isinstance(response, dict) or MESSAGE_FIELD not in response or CONTENT_FIELD not in response[MESSAGE_FIELD]:
             return False
-        content = response["message"]["content"]
+        content = response[MESSAGE_FIELD][CONTENT_FIELD]
         # Check if it ends with the suffix added by the agent
-        return content.endswith(EXAMPLE_AGENT_SUFFIX)
+        return content.endswith(EXAMPLE_AGENT_SUFFIX_STR)
 
     def _is_valid_streaming_response(self, chunks):
         """Validate the streaming response chunks with better model compatibility."""
@@ -272,9 +265,9 @@ class MainSimulator:
                     has_done = True
                 
                 # Check for content in different formats
-                if "response" in chunk and chunk["response"]:
+                if RESPONSE_FIELD in chunk and chunk[RESPONSE_FIELD]:
                     has_content = True
-                elif "message" in chunk and isinstance(chunk["message"], dict) and chunk["message"].get("content"):
+                elif MESSAGE_FIELD in chunk and isinstance(chunk[MESSAGE_FIELD], dict) and chunk[MESSAGE_FIELD].get(CONTENT_FIELD):
                     has_content = True
                 
                 valid_chunks += 1
@@ -283,11 +276,11 @@ class MainSimulator:
                 try:
                     parsed = json.loads(chunk)
                     if isinstance(parsed, dict):
-                        if parsed.get("done"):
+                        if parsed.get(DONE_FIELD):
                             has_done = True
-                        if "response" in parsed and parsed["response"]:
+                        if RESPONSE_FIELD in parsed and parsed[RESPONSE_FIELD]:
                             has_content = True
-                        elif "message" in parsed and isinstance(parsed["message"], dict) and parsed["message"].get("content"):
+                        elif MESSAGE_FIELD in parsed and isinstance(parsed[MESSAGE_FIELD], dict) and parsed[MESSAGE_FIELD].get(CONTENT_FIELD):
                             has_content = True
                     valid_chunks += 1
                 except json.JSONDecodeError:
@@ -311,7 +304,7 @@ class MainSimulator:
 
     async def test_plugins_endpoint(self):
         """Test the /plugins endpoint."""
-        async with httpx.AsyncClient(timeout=httpx.Timeout(HTTP_TIMEOUT)) as http_client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(HTTP_TIMEOUT_SEC)) as http_client:
             resp = await http_client.get(f"{self.proxy_host}:{self.proxy_port}/plugins")
             plugins_data = resp.json()
             logger.debug(f"Plugins response: {plugins_data}")
@@ -331,7 +324,7 @@ class MainSimulator:
             tests = []
             
             # Test streaming for all models (both generate and chat)
-            # for model in TEST_MODELS:
+            # for model in TEST_MODELS_LIST:
             #     tests.append((f"Generate Streaming ({model})", self.test_generate_endpoint_streaming, model))
             #     tests.append((f"Chat Streaming ({model})", self.test_chat_endpoint_streaming, model))
             
@@ -340,15 +333,15 @@ class MainSimulator:
                 ("Generate Endpoint", self.test_generate_endpoint),
                 ("Generate with Agent", self.test_generate_endpoint_with_example_agent),
                 ("Generate Streaming", self.test_generate_endpoint_streaming),
-                ("Generate with Optimizer Agent (Positive)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPTS["opt_positive"]),
-                ("Generate with Optimizer Agent (Negative)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPTS["opt_negative"]),
+                ("Generate with Optimizer Agent (Positive)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_POSITIVE),
+                ("Generate with Optimizer Agent (Negative)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_NEGATIVE),
                 ("Tags Endpoint", self.test_tags_endpoint),
                 ("Health Endpoint", self.test_health_endpoint),
                 ("Plugins Endpoint", self.test_plugins_endpoint),
                 ("Chat with Agent", self.test_chat_endpoint_with_example_agent),
                 ("Chat Streaming", self.test_chat_endpoint_streaming),
-                ("Chat with Optimizer Agent (Positive)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPTS["opt_positive"]),
-                ("Chat with Optimizer Agent (Negative)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPTS["opt_negative"]),
+                ("Chat with Optimizer Agent (Positive)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_POSITIVE),
+                ("Chat with Optimizer Agent (Negative)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_NEGATIVE),
             ])
 
             for test_def in tests:

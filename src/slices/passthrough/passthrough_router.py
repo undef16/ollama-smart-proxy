@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from typing import Dict, Any, List
 
 from shared.logging import LoggingManager
-from src.const import HTTP_BAD_REQUEST, HTTP_ERROR
+from src.const import HTTP_BAD_REQUEST, HTTP_ERROR, MODEL_FIELD, PROMPT_FIELD, STREAM_FIELD, CONTENT_TYPE_HEADER, CONTENT_TYPE_JSON, HOST_HEADER
 
 
 class PassthroughRouter:
@@ -35,11 +35,11 @@ class PassthroughRouter:
     async def generate(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Generate text using Ollama."""
         try:
-            self._validate_required_fields(request, ["model", "prompt"])
-            model = request["model"]
-            prompt = request["prompt"]
-            stream = request.get("stream", False)
-            kwargs = self._extract_kwargs(request, ["model", "prompt", "stream"])
+            self._validate_required_fields(request, [MODEL_FIELD, PROMPT_FIELD])
+            model = request[MODEL_FIELD]
+            prompt = request[PROMPT_FIELD]
+            stream = request.get(STREAM_FIELD, False)
+            kwargs = self._extract_kwargs(request, [MODEL_FIELD, PROMPT_FIELD, STREAM_FIELD])
     
             self.logger.info(f"Generating text with model: {model}")
             result = await self.ollama_client.generate(
@@ -65,9 +65,9 @@ class PassthroughRouter:
             async with httpx.AsyncClient() as client:
                 body = await request.body()
                 json_data = None
-                if request.headers.get('content-type') == 'application/json' and body:
+                if request.headers.get(CONTENT_TYPE_HEADER) == CONTENT_TYPE_JSON and body:
                     json_data = await request.json()
-                headers = {k: v for k, v in request.headers.items() if k.lower() not in ['host']}
+                headers = {k: v for k, v in request.headers.items() if k.lower() not in [HOST_HEADER]}
                 response = await client.request(
                     request.method,
                     url,

@@ -14,7 +14,8 @@ from src.const import (
     DEFAULT_AGENT_COMMAND_PATTERN,
     DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
-    LIBRARY_LOG_LEVELS
+    LIBRARY_LOG_LEVELS,
+    CONFIG_FILE_NAME
 )
 
 
@@ -38,7 +39,7 @@ class Config(BaseSettings):
     @classmethod
     def load_config_from_json(cls) -> Dict[str, Any]:
         """Load configuration from config.json file."""
-        config_path = Path("config.json")
+        config_path = Path(CONFIG_FILE_NAME)
         if config_path.exists():
             with open(config_path, 'r') as f:
                 config = json.load(f)

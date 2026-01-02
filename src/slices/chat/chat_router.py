@@ -5,7 +5,7 @@ import json
 
 from shared.logging import LoggingManager
 from .agent_chain import AgentChain, ChatRequest
-from src.const import HTTP_ERROR
+from src.const import HTTP_ERROR, RESPONSE_FIELD, DONE_FIELD, ERROR_FIELD, STREAMING_MEDIA_TYPE, CACHE_CONTROL_NO_CACHE
 
 
 class ChatRouter:
@@ -47,16 +47,16 @@ class ChatRouter:
                                 yield json.dumps(chunk, ensure_ascii=False) + "\n"
                             else:
                                 # Handle non-dict chunks by wrapping them
-                                yield json.dumps({"response": str(chunk), "done": False}) + "\n"
+                                yield json.dumps({RESPONSE_FIELD: str(chunk), DONE_FIELD: False}) + "\n"
                     except Exception as e:
                         self.logger.error(f"Error in streaming generation: {str(e)}")
                         # Send error chunk
-                        yield json.dumps({"error": str(e), "done": True}) + "\n"
-                
+                        yield json.dumps({ERROR_FIELD: str(e), DONE_FIELD: True}) + "\n"
+
                 return StreamingResponse(
-                    generate(), 
-                    media_type="application/x-ndjson",
-                    headers={"Cache-Control": "no-cache"}
+                    generate(),
+                    media_type=STREAMING_MEDIA_TYPE,
+                    headers={"Cache-Control": CACHE_CONTROL_NO_CACHE}
                 )
             else:
                 # Non-streaming response

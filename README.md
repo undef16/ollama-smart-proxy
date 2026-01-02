@@ -24,17 +24,6 @@ The project follows a vertical slice architecture with a shared kernel:
 - **Slices**: Independent feature areas (chat, generate, health, passthrough, plugins)
 - **Plugins**: Extensible agent system loaded from `src/plugins/`
 
-### OOP Design
-
-The project adheres to object-oriented programming principles for maintainable and extensible code:
-
-- **Encapsulation**: Classes encapsulate data and behavior, protecting internal state (e.g., `PluginRegistry` uses private `_agents` with public `agents` property returning a copy).
-- **Inheritance**: `BaseAgent` abstract base class defines the interface for all agents, allowing polymorphic implementations.
-- **Polymorphism**: Agents implement the same interface but with different behaviors, enabling dynamic loading and execution.
-- **Abstraction**: Abstract methods in `BaseAgent` provide contracts without implementations, promoting clean separation of concerns.
-
-Key OOP elements include classes for business logic (`ChatLogic`), data models (Pydantic `BaseModel`), and registries, ensuring a robust and flexible architecture.
-
 ## Quick Start
 
 See [docs/quickstart.md](docs/quickstart.md) for detailed setup and usage instructions.

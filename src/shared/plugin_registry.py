@@ -5,6 +5,7 @@ from typing import Dict, Optional
 
 from .base_agent import BaseAgent
 from .config import Config
+from src.const import PLUGINS_DIR_NAME, AGENT_FILE_NAME, INIT_FILE_NAME
 
 
 class PluginRegistry:
@@ -33,15 +34,15 @@ class PluginRegistry:
             if not plugin_dir.is_dir():
                 continue
 
-            agent_file = plugin_dir / "agent.py"
+            agent_file = plugin_dir / AGENT_FILE_NAME
             if not agent_file.exists():
                 continue
 
             # Load all .py files in the plugin directory as modules
             for py_file in plugin_dir.glob("*.py"):
-                if py_file.name == "__init__.py":
+                if py_file.name == INIT_FILE_NAME:
                     continue
-                module_name = f"plugins.{plugin_dir.name}.{py_file.stem}"
+                module_name = f"{PLUGINS_DIR_NAME}.{plugin_dir.name}.{py_file.stem}"
                 spec = importlib.util.spec_from_file_location(module_name, py_file)
                 if spec is None or spec.loader is None:
                     continue
@@ -50,7 +51,7 @@ class PluginRegistry:
                 spec.loader.exec_module(module)
 
             # The agent module is now loaded as plugins.{plugin_dir.name}.agent
-            agent_module = sys.modules.get(f"plugins.{plugin_dir.name}.agent")
+            agent_module = sys.modules.get(f"{PLUGINS_DIR_NAME}.{plugin_dir.name}.{AGENT_FILE_NAME.split('.')[0]}")
             if agent_module is None:
                 continue
 

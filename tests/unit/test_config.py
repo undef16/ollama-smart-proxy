@@ -13,7 +13,8 @@ from ..test_const import TEST_HOST, TEST_PORT, TEST_HOST_OVERRIDE, TEST_PORT_OVE
 class TestSettings:
     """Test Settings configuration class."""
 
-    def test_default_settings(self):
+    @patch('src.shared.config.Config.load_config_from_json', return_value={})
+    def test_default_settings(self, mock_load):
         """Test default configuration values."""
         settings = Config()
         assert settings.ollama_host == TEST_HOST

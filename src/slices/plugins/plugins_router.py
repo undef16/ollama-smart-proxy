@@ -3,6 +3,7 @@ from typing import List, Dict, Any
 
 from shared.logging import LoggingManager
 from shared.plugin_registry import PluginRegistry
+from src.const import PLUGIN_STATUS_LOADED
 
 
 class PluginsRouter:
@@ -26,7 +27,7 @@ class PluginsRouter:
             for agent in self.registry.agents.values():
                 plugins.append({
                     "name": agent.name,
-                    "status": "loaded"
+                    "status": PLUGIN_STATUS_LOADED
                 })
             self.logger.info(f"Listed {len(plugins)} loaded plugins")
             return plugins

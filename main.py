@@ -11,6 +11,7 @@ from src.slices.generate.generate_router import GenerateRouter
 from src.slices.health.health_router import HealthRouter
 from src.slices.passthrough.passthrough_router import PassthroughRouter
 from src.slices.plugins.plugins_router import PluginsRouter
+from src.const import APP_TITLE, APP_DESCRIPTION, APP_VERSION
 
 class OllamaSmartProxyApp:
     """Main application class for the Ollama Smart Proxy."""
@@ -34,9 +35,9 @@ class OllamaSmartProxyApp:
 
         # Create FastAPI app
         self.app = FastAPI(
-            title="Ollama Smart Proxy",
-            description="A lightweight proxy server for Ollama that exposes OpenAI-compatible APIs",
-            version="0.1.0",
+            title=APP_TITLE,
+            description=APP_DESCRIPTION,
+            version=APP_VERSION,
         )
 
         # Mount slices

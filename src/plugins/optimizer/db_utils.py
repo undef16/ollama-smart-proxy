@@ -141,8 +141,8 @@ class DatabaseManager:
                 template.avg_distance = (
                     template.avg_distance * (template.observation_count - 1) + new_distance
                 ) / template.observation_count
-                # Only update working_window if new value is greater than current value
-                if working_window > template.working_window:
+                # Only update working_window if new value is greater or less 15% than current value
+                if working_window < template.working_window *.85 or working_window > template.working_window * 1.15:
                     template.working_window = working_window
                 # Always set optimal_batch_size, using default if None is provided
                 template.optimal_batch_size = optimal_batch_size if optimal_batch_size is not None else 32

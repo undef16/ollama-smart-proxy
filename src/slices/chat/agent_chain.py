@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from shared.config import Config
 from shared.logging import LoggingManager
+from src.const import RESPONSE_FIELD, MESSAGE_FIELD, CONTENT_FIELD, USER_ROLE, MODEL_FIELD, MESSAGES_FIELD, STREAM_FIELD, AGENTS_FIELD, NO_CONTENT_PLACEHOLDER, NO_RESPONSE_PLACEHOLDER
 
 
 class Message(BaseModel):
@@ -88,8 +89,8 @@ class AgentChain:
             Modified context after all agents have processed it.
         """
         # Get the actual response from the context
-        response = response_context["response"]
-        response_content = response.get('message', {}).get('content', 'NO CONTENT')
+        response = response_context[RESPONSE_FIELD]
+        response_content = response.get(MESSAGE_FIELD, {}).get(CONTENT_FIELD, NO_CONTENT_PLACEHOLDER)
         self.logger.debug(f"Before agent chain response processing: {response_content[:200]}{'...' if len(response_content) > 200 else ''}")
 
         # Process response through each agent
@@ -99,8 +100,8 @@ class AgentChain:
                 response = await agent.on_response(request_context, response)
 
         # Update the context with the modified response
-        response_context["response"] = response
-        response_content = response.get('message', {}).get('content', 'NO CONTENT')
+        response_context[RESPONSE_FIELD] = response
+        response_content = response.get(MESSAGE_FIELD, {}).get(CONTENT_FIELD, NO_CONTENT_PLACEHOLDER)
         self.logger.debug(f"After agent chain response processing: {response_content[:200]}{'...' if len(response_content) > 200 else ''}")
         return response_context
 
@@ -122,7 +123,7 @@ class AgentChain:
 
             # Parse slash commands from the last user message
             agents_to_execute = []
-            if messages and messages[-1]["role"] == "user":
+            if messages and messages[-1]["role"] == USER_ROLE:
                 content = messages[-1]["content"]
                 self.logger.info(f"Processing user message: {content}")
                 cleaned_content, agent_names = self._parse_slash_commands(content)
@@ -135,10 +136,10 @@ class AgentChain:
 
             # Create request context
             context = {
-                "model": model,
-                "messages": messages,
-                "stream": chat_request.stream,
-                "agents": agents_to_execute
+                MODEL_FIELD: model,
+                MESSAGES_FIELD: messages,
+                STREAM_FIELD: chat_request.stream,
+                AGENTS_FIELD: agents_to_execute
             }
 
             # Execute agent chain on request
@@ -150,32 +151,32 @@ class AgentChain:
             # Forward to Ollama
             self.logger.debug(f"Forwarding request to Ollama for model: {context['model']}")
             response = await self.ollama_client.chat(
-                model=context["model"],
-                messages=context["messages"],
-                stream=context["stream"]
+                model=context[MODEL_FIELD],
+                messages=context[MESSAGES_FIELD],
+                stream=context[STREAM_FIELD]
             )
 
-            if context["stream"]:
+            if context[STREAM_FIELD]:
                 self.logger.info(f"Chat request processed successfully for model: {model} (streaming)")
                 return response
             else:
                 # Create response context
                 response_context = {
-                    "response": response,
-                    "agents": agents_to_execute
+                    RESPONSE_FIELD: response,
+                    AGENTS_FIELD: agents_to_execute
                 }
 
                 # Execute agent chain on response
-                response_content = response_context['response'].get('message', {}).get('content', 'NO CONTENT')
+                response_content = response_context[RESPONSE_FIELD].get(MESSAGE_FIELD, {}).get(CONTENT_FIELD, NO_CONTENT_PLACEHOLDER)
                 self.logger.debug(f"Before agent response processing: {response_content[:200]}{'...' if len(response_content) > 200 else ''}")
                 response_context = await self._execute_agent_chain_on_response(
                     agents_to_execute, context, response_context
                 )
-                response_content = response_context['response'].get('message', {}).get('content', 'NO CONTENT')
+                response_content = response_context[RESPONSE_FIELD].get(MESSAGE_FIELD, {}).get(CONTENT_FIELD, NO_CONTENT_PLACEHOLDER)
                 self.logger.debug(f"After agent response processing: {response_content[:200]}{'...' if len(response_content) > 200 else ''}")
 
                 self.logger.info(f"Chat request processed successfully for model: {model}")
-                return response_context["response"]
+                return response_context[RESPONSE_FIELD]
         except Exception as e:
             self.logger.error(f"Error processing chat request: {str(e)}")
             raise
