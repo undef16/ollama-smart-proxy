@@ -74,34 +74,37 @@ class TestExampleAgent:
     @pytest.mark.asyncio
     async def test_on_response_chat_format(self, example_agent):
         """Test on_response with chat format (message.content)."""
-        context = {
+        request = {}
+        response = {
             "message": {
                 "content": "Hello from model"
             }
         }
 
-        result = await example_agent.on_response(context)
+        result = await example_agent.on_response(request, response)
 
         assert result["message"]["content"] == "Hello from model [processed by example agent]"
 
     @pytest.mark.asyncio
     async def test_on_response_generate_format(self, example_agent):
         """Test on_response with generate format (response)."""
-        context = {
+        request = {}
+        response = {
             "response": "Generated text from model"
         }
 
-        result = await example_agent.on_response(context)
+        result = await example_agent.on_response(request, response)
 
         assert result["response"] == "Generated text from model [processed by example agent]"
 
     @pytest.mark.asyncio
     async def test_on_response_no_matching_format(self, example_agent):
         """Test on_response with no matching format."""
-        context = {
+        request = {}
+        response = {
             "other_field": "some value"
         }
 
-        result = await example_agent.on_response(context)
+        result = await example_agent.on_response(request, response)
 
-        assert result == context
+        assert result == response

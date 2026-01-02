@@ -5,6 +5,7 @@ import json
 
 from shared.logging import LoggingManager
 from .agent_chain import AgentChain, ChatRequest
+from src.const import HTTP_ERROR
 
 
 class ChatRouter:
@@ -46,4 +47,4 @@ class ChatRouter:
                 return response
         except Exception as e:
             self.logger.error(f"Error processing chat request: {str(e)}")
-            raise HTTPException(status_code=500, detail="Internal server error")
+            raise HTTPException(status_code=HTTP_ERROR, detail="Internal server error")

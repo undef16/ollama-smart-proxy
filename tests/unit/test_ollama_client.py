@@ -1,11 +1,12 @@
 """Unit tests for Ollama client wrapper."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from src.shared.ollama_client import OllamaClient
+from ..test_const import TEST_MODEL, TEST_PROMPT, MOCK_CHAT_RESPONSE, MOCK_GENERATE_RESPONSE, MOCK_PULL_RESPONSE, MOCK_SHOW_RESPONSE, MOCK_DELETE_RESPONSE, MOCK_EMBEDDINGS_RESPONSE
 
 
 class TestOllamaClient:
@@ -18,65 +19,61 @@ class TestOllamaClient:
         assert client._client is not None
 
     @pytest.mark.asyncio
-    @patch('src.shared.ollama_client.ollama')
     async def test_chat(self, mock_ollama):
         """Test chat method."""
         mock_client = MagicMock()
         mock_ollama.Client.return_value = mock_client
-        mock_client.chat.return_value = {"response": "test"}
+        mock_client.chat.return_value = MOCK_CHAT_RESPONSE
 
         client = OllamaClient()
         result = await client.chat(
-            model="test-model",
+            model=TEST_MODEL,
             messages=[{"role": "user", "content": "Hello"}],
             stream=False
         )
 
-        assert result == {"response": "test"}
+        assert result == MOCK_CHAT_RESPONSE
         mock_client.chat.assert_called_once_with(
-            model="test-model",
+            model=TEST_MODEL,
             messages=[{"role": "user", "content": "Hello"}],
             stream=False
         )
 
     @pytest.mark.asyncio
-    @patch('src.shared.ollama_client.ollama')
     async def test_generate(self, mock_ollama):
         """Test generate method."""
         mock_client = MagicMock()
         mock_ollama.Client.return_value = mock_client
-        mock_client.generate.return_value = {"response": "generated text"}
+        mock_client.generate.return_value = MOCK_GENERATE_RESPONSE
 
         client = OllamaClient()
         result = await client.generate(
-            model="test-model",
-            prompt="Test prompt",
+            model=TEST_MODEL,
+            prompt=TEST_PROMPT,
             stream=True
         )
 
-        assert result == {"response": "generated text"}
+        assert result == MOCK_GENERATE_RESPONSE
         mock_client.generate.assert_called_once_with(
-            model="test-model",
-            prompt="Test prompt",
+            model=TEST_MODEL,
+            prompt=TEST_PROMPT,
             stream=True
         )
 
     @pytest.mark.asyncio
-    @patch('src.shared.ollama_client.ollama')
     async def test_pull(self, mock_ollama):
         """Test pull method."""
         mock_client = MagicMock()
         mock_ollama.Client.return_value = mock_client
-        mock_client.pull.return_value = {"status": "pulled"}
+        mock_client.pull.return_value = MOCK_PULL_RESPONSE
 
         client = OllamaClient()
-        result = await client.pull("test-model")
+        result = await client.pull(TEST_MODEL)
 
-        assert result == {"status": "pulled"}
-        mock_client.pull.assert_called_once_with("test-model")
+        assert result == MOCK_PULL_RESPONSE
+        mock_client.pull.assert_called_once_with(TEST_MODEL)
 
     @pytest.mark.asyncio
-    @patch('src.shared.ollama_client.ollama')
     async def test_list(self, mock_ollama):
         """Test list method."""
         mock_client = MagicMock()
@@ -90,49 +87,46 @@ class TestOllamaClient:
         mock_client.list.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('src.shared.ollama_client.ollama')
     async def test_show(self, mock_ollama):
         """Test show method."""
         mock_client = MagicMock()
         mock_ollama.Client.return_value = mock_client
-        mock_client.show.return_value = {"info": "model info"}
+        mock_client.show.return_value = MOCK_SHOW_RESPONSE
 
         client = OllamaClient()
-        result = await client.show("test-model")
+        result = await client.show(TEST_MODEL)
 
-        assert result == {"info": "model info"}
-        mock_client.show.assert_called_once_with("test-model")
+        assert result == MOCK_SHOW_RESPONSE
+        mock_client.show.assert_called_once_with(TEST_MODEL)
 
     @pytest.mark.asyncio
-    @patch('src.shared.ollama_client.ollama')
     async def test_delete(self, mock_ollama):
         """Test delete method."""
         mock_client = MagicMock()
         mock_ollama.Client.return_value = mock_client
-        mock_client.delete.return_value = {"status": "deleted"}
+        mock_client.delete.return_value = MOCK_DELETE_RESPONSE
 
         client = OllamaClient()
-        result = await client.delete("test-model")
+        result = await client.delete(TEST_MODEL)
 
-        assert result == {"status": "deleted"}
-        mock_client.delete.assert_called_once_with("test-model")
+        assert result == MOCK_DELETE_RESPONSE
+        mock_client.delete.assert_called_once_with(TEST_MODEL)
 
     @pytest.mark.asyncio
-    @patch('src.shared.ollama_client.ollama')
     async def test_embeddings(self, mock_ollama):
         """Test embeddings method."""
         mock_client = MagicMock()
         mock_ollama.Client.return_value = mock_client
-        mock_client.embeddings.return_value = {"embeddings": [0.1, 0.2]}
+        mock_client.embeddings.return_value = MOCK_EMBEDDINGS_RESPONSE
 
         client = OllamaClient()
         result = await client.embeddings(
-            model="test-model",
-            prompt="test prompt"
+            model=TEST_MODEL,
+            prompt=TEST_PROMPT
         )
 
-        assert result == {"embeddings": [0.1, 0.2]}
+        assert result == MOCK_EMBEDDINGS_RESPONSE
         mock_client.embeddings.assert_called_once_with(
-            model="test-model",
-            prompt="test prompt"
+            model=TEST_MODEL,
+            prompt=TEST_PROMPT
         )

@@ -94,11 +94,11 @@ class TestAgentChain:
         }.get(name)
 
         context = {"response": {"original": "response"}}
-        result = await logic._execute_agent_chain_on_response(["agent1", "agent2"], context)
+        result = await logic._execute_agent_chain_on_response(["agent1", "agent2"], {"original": "request"}, context)
 
         # Verify agents were called in reverse order
-        agent2.on_response.assert_called_once_with({"original": "response"})
-        agent1.on_response.assert_called_once_with({"modified": "by_agent2"})
+        agent2.on_response.assert_called_once_with({"original": "request"}, {"original": "response"})
+        agent1.on_response.assert_called_once_with({"original": "request"}, {"modified": "by_agent2"})
 
         assert result == {"response": {"modified": "by_agent1"}}
 

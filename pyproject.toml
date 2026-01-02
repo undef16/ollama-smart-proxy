@@ -12,6 +12,7 @@ dependencies = [
     "httpx",
     "ollama",
     "pydantic-settings",
+    "sqlalchemy",
     "uvicorn[standard]",
 ]
 
@@ -20,6 +21,9 @@ dev = [
     "black",
     "flake8",
     "pytest",
+]
+optimizer = [
+    "psutil>=5.9.0",
 ]
 
 [tool.black]

@@ -4,6 +4,7 @@ from fastapi.responses import StreamingResponse
 from typing import Dict, Any, List
 
 from shared.logging import LoggingManager
+from src.const import HTTP_BAD_REQUEST, HTTP_ERROR
 
 
 class PassthroughRouter:
@@ -25,7 +26,7 @@ class PassthroughRouter:
         """Validate that required fields are present in the request."""
         for field in fields:
             if not request.get(field):
-                raise HTTPException(status_code=400, detail=f"{field} is required")
+                raise HTTPException(status_code=HTTP_BAD_REQUEST, detail=f"{field} is required")
 
     def _extract_kwargs(self, request: Dict[str, Any], exclude_fields: List[str]) -> Dict[str, Any]:
         """Extract kwargs from request excluding specified fields."""
@@ -53,7 +54,7 @@ class PassthroughRouter:
             raise
         except Exception as e:
             self.logger.error(f"Error generating text: {str(e)}")
-            raise HTTPException(status_code=500, detail="Text generation failed")
+            raise HTTPException(status_code=HTTP_ERROR, detail="Text generation failed")
 
     async def generic_passthrough(self, request: Request, path: str):
         """Generic passthrough for any Ollama API request."""
@@ -81,4 +82,4 @@ class PassthroughRouter:
                 )
         except Exception as e:
             self.logger.error(f"Error in generic passthrough: {str(e)}")
-            raise HTTPException(status_code=500, detail="Passthrough request failed")
+            raise HTTPException(status_code=HTTP_ERROR, detail="Passthrough request failed")
