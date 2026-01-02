@@ -61,7 +61,7 @@ class PassthroughRouter:
         try:
             from shared.config import Config
             config = Config()
-            url = f"http://{config.ollama_host}:{config.ollama_port}/api/{path}"
+            url = f"{config.ollama_host}:{config.ollama_port}/api/{path}"
             async with httpx.AsyncClient() as client:
                 body = await request.body()
                 json_data = None

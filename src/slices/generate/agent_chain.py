@@ -82,7 +82,8 @@ class GenerateChain:
         """
         # Get the actual response from the context
         response = response_context["response"]
-        self.logger.info(f"Before agent chain response processing: {response.get('response', 'NO RESPONSE')}")
+        response_content = response.get('response', 'NO RESPONSE')
+        self.logger.debug(f"Before agent chain response processing: {response_content[:200]}{'...' if len(response_content) > 200 else ''}")
 
         # Process response through each agent
         for agent_name in reversed(agents):
@@ -92,7 +93,8 @@ class GenerateChain:
 
         # Update the context with the modified response
         response_context["response"] = response
-        self.logger.info(f"After agent chain response processing: {response.get('response', 'NO RESPONSE')}")
+        response_content = response.get('response', 'NO RESPONSE')
+        self.logger.debug(f"After agent chain response processing: {response_content[:200]}{'...' if len(response_content) > 200 else ''}")
         return response_context
 
     async def process_generate_request(self, generate_request: GenerateRequest) -> Any:
@@ -153,11 +155,13 @@ class GenerateChain:
                 }
 
                 # Execute agent chain on response
-                self.logger.info(f"Before agent response processing: {response_context['response'].get('response', 'NO RESPONSE')}")
+                response_content = response_context['response'].get('response', 'NO RESPONSE')
+                self.logger.debug(f"Before agent response processing: {response_content[:200]}{'...' if len(response_content) > 200 else ''}")
                 response_context = await self._execute_agent_chain_on_response(
                     agents_to_execute, context, response_context
                 )
-                self.logger.info(f"After agent response processing: {response_context['response'].get('response', 'NO RESPONSE')}")
+                response_content = response_context['response'].get('response', 'NO RESPONSE')
+                self.logger.debug(f"After agent response processing: {response_content[:200]}{'...' if len(response_content) > 200 else ''}")
 
                 self.logger.info(f"Generate request processed successfully for model: {model}")
                 return response_context["response"]
