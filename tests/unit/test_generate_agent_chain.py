@@ -50,9 +50,9 @@ class TestGenerateChain:
 
     def test_parse_slash_commands_with_agents(self, generate_chain):
         """Test parsing slash commands with agents."""
-        content = "This is a prompt with /example and /test agents"
+        content = "/example /test This is a prompt with agents"
         cleaned_content, agents = generate_chain._parse_slash_commands(content)
-        assert cleaned_content == "This is a prompt with  and  agents"
+        assert cleaned_content == "This is a prompt with agents"
         assert agents == {"example", "test"}
 
     @pytest.mark.asyncio

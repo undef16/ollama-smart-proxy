@@ -17,6 +17,13 @@
             "request": "launch",
             "program": "main.py",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Python Debugger: benchmark.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "benchmark.py",
+            "console": "integratedTerminal"
         }
     ]
 }

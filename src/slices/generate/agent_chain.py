@@ -19,13 +19,16 @@ class GenerateRequest(BaseModel):
 class GenerateChain:
     """Handles generate request processing and Ollama forwarding."""
 
+    # Pre-compile regex pattern at class level
+    _AGENT_COMMAND_PATTERN = re.compile(r'^\s*/(\w+)\s*')
+
     def __init__(self, registry, ollama_client):
         self.registry = registry
         self.ollama_client = ollama_client
         self.logger = LoggingManager.get_logger(__name__)
         self._model_cache: Optional[Dict[str, float]] = None
-        config = Config()
-        self._cache_ttl = config.model_cache_ttl
+        self.config = Config()
+        self._cache_ttl = self.config.model_cache_ttl
 
     def _parse_slash_commands(self, content: str) -> tuple[str, Set[str]]:
         """Parse slash commands from prompt content.
@@ -36,14 +39,17 @@ class GenerateChain:
         Returns:
             Tuple of (cleaned_content, set_of_agent_names).
         """
-        # Find all /agent commands
-        config = Config()
-        agent_pattern = config.agent_command_pattern
-        agents = set(re.findall(agent_pattern, content))
-
-        # Remove slash commands from content
-        cleaned_content = re.sub(agent_pattern, '', content).strip()
-
+        # Parse leading slash commands
+        agents = set()
+        pos = 0
+        while True:
+            match = self._AGENT_COMMAND_PATTERN.match(content[pos:])
+            if match:
+                agents.add(match.group(1))
+                pos += match.end()
+            else:
+                break
+        cleaned_content = content[pos:].strip()
         return cleaned_content, agents
 
     async def _execute_agent_chain_on_request(

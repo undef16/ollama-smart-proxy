@@ -11,6 +11,7 @@ from src.shared.logging import LoggingManager
 
 from .db_utils import DatabaseManager
 from .simhash_utils import TemplateMatcher
+from .template_cache import TemplateCache
 from .const import AGENT_NAME, SAFETY_MARGIN
 
 
@@ -37,10 +38,16 @@ class OptimizerAgent(BaseAgent):
         db_path.parent.mkdir(exist_ok=True)
         self.db = DatabaseManager(db_path)
 
-        # Template matcher
-        self.matcher = TemplateMatcher(self.db)
+        # Template matcher with caching
+        self.template_cache = TemplateCache(max_size=512, default_ttl=1800)
+        self.matcher = TemplateMatcher(self.db, template_cache=self.template_cache)
+        
+        # Batch operations buffer for efficient learning
+        self._batch_learning_buffer = []
+        self._batch_learning_threshold = 10  # Learn in batches of 10 requests
+        self._batch_learning_enabled = True
 
-        self.logger.info("OptimizerAgent initialized")
+        self.logger.info("OptimizerAgent initialized with batch learning support")
 
     @property
     def name(self) -> str:
@@ -117,7 +124,67 @@ class OptimizerAgent(BaseAgent):
         except Exception as e:
             self.logger.error(f"Error in on_response: {e}")
 
+        # Periodically log cache performance (every 100 requests)
+        if hasattr(self, '_request_count'):
+            self._request_count += 1
+            if self._request_count % 100 == 0:
+                self.log_cache_performance()
+        else:
+            self._request_count = 1
+
         return response
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get comprehensive cache statistics.
+        
+        Returns:
+            Dictionary containing cache statistics from all cache layers
+        """
+        stats = {
+            'template_cache': self.template_cache.get_stats() if hasattr(self, 'template_cache') and self.template_cache else {'hits': 0, 'misses': 0, 'hit_rate': 0},
+            'tokenizer_cache': self.matcher.simhash.tokenizer_cache.get_stats() if hasattr(self.matcher.simhash, 'tokenizer_cache') and self.matcher.simhash.tokenizer_cache else {'hits': 0, 'misses': 0, 'hit_rate': 0},
+            'fingerprint_cache': self.matcher.simhash.fingerprint_cache.get_stats() if hasattr(self.matcher.simhash, 'fingerprint_cache') and self.matcher.simhash.fingerprint_cache else {'hits': 0, 'misses': 0, 'hit_rate': 0}
+        }
+        
+        # Calculate overall cache effectiveness
+        total_hits = sum(cache.get('hits', 0) for cache in stats.values())
+        total_misses = sum(cache.get('misses', 0) for cache in stats.values())
+        total_requests = total_hits + total_misses
+        
+        stats['overall'] = {
+            'total_hits': total_hits,
+            'total_misses': total_misses,
+            'total_requests': total_requests,
+            'overall_hit_rate': total_hits / total_requests if total_requests > 0 else 0,
+            'estimated_computation_saved_ms': total_hits * 2.5  # Estimate 2.5ms saved per cache hit
+        }
+        
+        self.logger.info(f"Cache stats: {stats['overall']}")
+        return stats
+    
+    def log_cache_performance(self) -> None:
+        """Log cache performance metrics."""
+        try:
+            stats = self.get_cache_stats()
+            overall = stats['overall']
+            
+            self.logger.info(
+                f"Cache Performance - Hits: {overall['total_hits']}, "
+                f"Misses: {overall['total_misses']}, "
+                f"Hit Rate: {overall['overall_hit_rate']:.2%}, "
+                f"Estimated Savings: {overall['estimated_computation_saved_ms']:.1f}ms"
+            )
+            
+            # Log individual cache performance
+            for cache_name, cache_stats in stats.items():
+                if cache_name != 'overall' and cache_stats.get('hits', 0) + cache_stats.get('misses', 0) > 0:
+                    self.logger.debug(
+                        f"{cache_name} - Hits: {cache_stats['hits']}, "
+                        f"Misses: {cache_stats['misses']}, "
+                        f"Hit Rate: {cache_stats['hit_rate']:.2%}"
+                    )
+        except Exception as e:
+            self.logger.error(f"Error logging cache performance: {e}")
 
     def _extract_prompt_text(self, request: Dict[str, Any]) -> Optional[str]:
         """Extract prompt text from request, including full conversation with roles.
@@ -257,17 +324,92 @@ class OptimizerAgent(BaseAgent):
                 self.logger.error(f"Error updating template {template_id}: {e}")
 
     async def _learn_new_template(self, request: Dict[str, Any], working_window: int) -> None:
-        """Learn new template from request.
-
+        """Learn new template from request using batch processing.
+        
         Args:
             request: Request dictionary.
             working_window: Working window size.
         """
         prompt_text = self._extract_prompt_text(request)
         if prompt_text and prompt_text.strip():
+            if self._batch_learning_enabled:
+                # Add to batch learning buffer
+                self._batch_learning_buffer.append({
+                    'prompt_text': prompt_text,
+                    'working_window': working_window,
+                    'optimal_batch_size': 32  # Default batch size
+                })
+                
+                # Check if we should process the batch
+                if len(self._batch_learning_buffer) >= self._batch_learning_threshold:
+                    await self._process_batch_learning()
+            else:
+                # Fallback to individual learning
+                loop = asyncio.get_event_loop()
+                try:
+                    template_id = await loop.run_in_executor(None, self.matcher.learn_template, prompt_text, working_window, 32)
+                    self.logger.debug(f"Learned new template {template_id} with working_window {working_window}")
+                    
+                    # Invalidate caches on new template learning
+                    if hasattr(self, 'template_cache') and self.template_cache:
+                        self.template_cache.clear()
+                        self.logger.debug("Template cache cleared after learning new template")
+                    
+                    if hasattr(self.matcher.simhash, 'fingerprint_cache') and self.matcher.simhash.fingerprint_cache:
+                        self.matcher.simhash.fingerprint_cache.invalidate_all()
+                        self.logger.debug("Fingerprint cache invalidated after learning new template")
+                        
+                except Exception as e:
+                    self.logger.error(f"Error learning new template: {e}")
+    
+    async def _process_batch_learning(self) -> None:
+        """Process batch learning from accumulated requests."""
+        if not self._batch_learning_buffer:
+            return
+        
+        try:
+            # Use batch operations for efficient learning
             loop = asyncio.get_event_loop()
-            try:
-                template_id = await loop.run_in_executor(None, self.matcher.learn_template, prompt_text, working_window, 32)  # Default batch size of 32
-                self.logger.debug(f"Learned new template {template_id} with working_window {working_window}")
-            except Exception as e:
-                self.logger.error(f"Error learning new template: {e}")
+            template_ids = await loop.run_in_executor(
+                None,
+                self.db.batch_operations.batch_learn_templates,
+                self._batch_learning_buffer,
+                self.matcher
+            )
+            
+            self.logger.info(f"Batch learned {len(template_ids)} templates from {len(self._batch_learning_buffer)} requests")
+            
+            # Clear the buffer after successful processing
+            self._batch_learning_buffer.clear()
+            
+            # Invalidate caches after batch learning
+            if hasattr(self, 'template_cache') and self.template_cache:
+                self.template_cache.clear()
+                self.logger.debug(f"Template cache cleared after batch learning {len(template_ids)} templates")
+            
+            if hasattr(self.matcher.simhash, 'fingerprint_cache') and self.matcher.simhash.fingerprint_cache:
+                self.matcher.simhash.fingerprint_cache.invalidate_all()
+                self.logger.debug("Fingerprint cache invalidated after batch learning")
+                
+        except Exception as e:
+            self.logger.error(f"Error in batch learning: {e}")
+            # Don't clear buffer on failure to allow retry
+    
+    async def flush_batch_learning(self) -> None:
+        """Force processing of any remaining batch learning requests."""
+        if self._batch_learning_buffer:
+            self.logger.info(f"Flushing {len(self._batch_learning_buffer)} pending batch learning requests")
+            await self._process_batch_learning()
+    
+    def enable_batch_learning(self, enabled: bool = True) -> None:
+        """Enable or disable batch learning."""
+        self._batch_learning_enabled = enabled
+        self.logger.info(f"Batch learning {'enabled' if enabled else 'disabled'}")
+    
+    def set_batch_learning_threshold(self, threshold: int) -> None:
+        """Set the batch learning threshold."""
+        if threshold > 0:
+            self._batch_learning_threshold = threshold
+            self.logger.info(f"Batch learning threshold set to {threshold}")
+        else:
+            self.logger.warning("Batch learning threshold must be positive")
