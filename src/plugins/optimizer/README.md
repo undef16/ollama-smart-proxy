@@ -12,9 +12,52 @@ The plugin implements a multi-layered optimization strategy:
 - **Multi-Level Caching**: Reduces computational overhead through intelligent caching
 - **Persistent Learning**: Stores statistics across sessions for continuous improvement
 
+## Database Configuration
+
+The optimizer plugin supports both SQLite and PostgreSQL databases.
+
+### SQLite (Default)
+
+By default, the plugin uses SQLite for data storage:
+
+```json
+{
+  "database_type": "sqlite",
+  "database_path": "./data/optimizer_stats.db"
+}
+```
+
+### PostgreSQL
+
+For production deployments, you can use PostgreSQL:
+
+```json
+{
+  "database_type": "postgres",
+  "postgres_connection_string": "postgresql://user:password@localhost:5432/optimizer"
+}
+```
+
+**Note**: PostgreSQL requires the `pg_trgm` extension. It will be enabled automatically on first connection.
+
 ## Architecture
 
-### Core Components
+The plugin uses Hexagonal Architecture (Ports and Adapters):
+
+```
+src/plugins/optimizer/
+├── ports/                    # Port interfaces
+│   └── template_repository.py
+├── adapters/                 # Database implementations
+│   ├── sqlite_adapter.py
+│   └── postgres_adapter.py
+├── domain/                   # Domain entities
+│   └── template.py
+└── factory/                  # Factory for creating adapters
+    └── database_factory.py
+```
+
+## Core Components
 
 #### 1. OptimizerAgent (`agent.py`)
 The main agent class that processes requests and responses:
@@ -38,12 +81,52 @@ Multiple cache layers for performance optimization:
 - **Fingerprint Cache**: Stores computed SimHash fingerprints
 - **Query Cache**: Caches database query results
 
-#### 4. Database Layer (`db_utils.py`)
-Persistent storage using SQLite with WAL mode for concurrent access:
+#### 4. Database Abstraction Layer
+The plugin uses a database abstraction layer with ports and adapters pattern for flexible storage:
 
+- **Ports**: Define interfaces for data operations (template_repository.py)
+- **Adapters**: Implement database-specific logic for SQLite and PostgreSQL
+- **Factory**: Creates appropriate adapter based on configuration
 - **Templates Table**: Stores learned prompt patterns and optimal parameters
 - **Request Statistics**: Historical performance data for continuous learning
 - **Batch Operations**: Efficient bulk insert/update operations
+
+## Migration Guide
+
+### Switching from SQLite to PostgreSQL
+
+To migrate from SQLite to PostgreSQL:
+
+1. **Backup your data**: Export your SQLite database if needed (manual process)
+2. **Update configuration**: Change `database_type` to "postgres" and provide `postgres_connection_string`
+3. **Install PostgreSQL**: Ensure PostgreSQL is running and accessible
+4. **Run the application**: The plugin will create tables automatically on first run
+5. **Migrate data**: Manually migrate any existing data if required
+
+**Note**: Data migration is a manual process. The plugin does not provide automatic migration tools.
+
+### Configuration Steps for PostgreSQL
+
+1. Install PostgreSQL server
+2. Create a database for the optimizer
+3. Update your config.json with PostgreSQL connection details
+4. Ensure the `pg_trgm` extension is available (installed automatically)
+
+## Configuration Reference
+
+### Database-Related Configuration Options
+
+- `database_type`: "sqlite" or "postgres" (default: "sqlite")
+- `database_path`: Path to SQLite database file (default: "./data/optimizer_stats.db")
+- `postgres_connection_string`: PostgreSQL connection URI
+
+### Environment Variables
+
+You can also configure the database via environment variables:
+
+- `OLLAMA_PROXY_DATABASE_TYPE` - "sqlite" or "postgres"
+- `OLLAMA_PROXY_DATABASE_PATH` - Path to SQLite database
+- `OLLAMA_PROXY_POSTGRES_CONNECTION_STRING` - PostgreSQL connection URI
 
 ## Technical Implementation
 

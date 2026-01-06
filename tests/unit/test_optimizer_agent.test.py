@@ -7,7 +7,7 @@ from pathlib import Path
 
 from src.plugins.optimizer.agent import OptimizerAgent, OptimizerMetadata
 from src.plugins.optimizer.const import AGENT_NAME, SAFETY_MARGIN
-from src.plugins.optimizer.db_utils import Template
+from src.plugins.optimizer.infrastructure.database.template_model import TemplateModel
 from tests.test_const import (
     TEST_MODEL, TEST_PROMPT, PROMPT_EVAL_COUNT, EVAL_COUNT,
     INVALID_TOKEN_COUNT, TEMPLATE_ID, CONFIDENCE_SCORE, DISTANCE_VALUE,
@@ -21,10 +21,11 @@ class TestOptimizerAgent:
 
     @pytest.fixture
     def optimizer_agent(self):
-        """Create an OptimizerAgent instance."""
-        with patch('src.plugins.optimizer.agent.DatabaseManager'), \
-             patch('src.plugins.optimizer.agent.TemplateMatcher'):
-            return OptimizerAgent()
+        """Create an OptimizerAgent instance with mocked dependencies."""
+        mock_repository = MagicMock()
+        mock_repository.batch_operations = MagicMock()
+        with patch('src.plugins.optimizer.agent.TemplateMatcher'):
+            return OptimizerAgent(repository=mock_repository)
 
     def test_name_property(self, optimizer_agent):
         """Test the name property."""

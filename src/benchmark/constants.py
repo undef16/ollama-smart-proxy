@@ -15,7 +15,7 @@ class BenchmarkConstants:
     DEFAULT_TIMEOUT = 300  # seconds
     DEFAULT_MAX_RETRIES = 3
     DEFAULT_CONCURRENCIES = [1,2,3] #,2,3,4
-    DEFAULT_REQUESTS = 51 # 2294
+    DEFAULT_REQUESTS = 5 # 2294
     PROXY_PREFIX = "/opt "
     CONTEXT_WINDOW = 32768
     SEED = 42

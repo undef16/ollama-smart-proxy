@@ -21,6 +21,8 @@ dev = [
     "black",
     "flake8",
     "pytest",
+    "pytest-mock",
+    "testcontainers>=12.0.0",
 ]
 optimizer = [
     "psutil>=5.9.0",

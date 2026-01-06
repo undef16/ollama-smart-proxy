@@ -4,17 +4,17 @@ import time
 import logging
 import contextlib
 import json
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List
 from dataclasses import dataclass
 import ollama
 import httpx
 from src.shared.config import Config
 from src.const import (
-    DEFAULT_TEST_MODEL, TEST_MODELS_LIST, PROXY_HOST_URL, SERVER_START_TIMEOUT_SEC,
+    DEFAULT_TEST_MODEL, PROXY_HOST_URL, SERVER_START_TIMEOUT_SEC,
     HTTP_TIMEOUT_SEC, MAX_RETRY_ATTEMPTS, EXAMPLE_AGENT_SUFFIX_STR,
-    TEST_PROMPT_SIMPLE, TEST_PROMPT_WITH_AGENT, TEST_PROMPT_OPT_POSITIVE, TEST_PROMPT_OPT_NEGATIVE,
+    TEST_PROMPT_SIMPLE, TEST_PROMPT_WITH_AGENT, TEST_PROMPT_OPT_NEGATIVE,
     HEALTH_STATUS_HEALTHY, HEALTH_STATUS_UNHEALTHY, MESSAGE_FIELD, CONTENT_FIELD,
-    RESPONSE_FIELD, DONE_FIELD, STREAM_FIELD, USER_ROLE
+    RESPONSE_FIELD, DONE_FIELD, USER_ROLE
 )
 
 # Configure logging

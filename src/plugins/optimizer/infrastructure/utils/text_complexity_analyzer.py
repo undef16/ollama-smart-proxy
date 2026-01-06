@@ -81,7 +81,7 @@ class TextComplexityAnalyzer:
                     # Move to end (most recently used)
                     self._analysis_cache.move_to_end(cache_key)
                     return cached_value
-
+        
         # Perform analysis
         result = self._analyze_text_impl(text)
         
@@ -157,7 +157,7 @@ class TextComplexityAnalyzer:
             List of optimal resolutions for this text
         """
         if default_resolutions is None:
-            from .const import DEFAULT_RESOLUTIONS
+            from ..const import DEFAULT_RESOLUTIONS
             default_resolutions = DEFAULT_RESOLUTIONS
         
         metrics = self.analyze_text(text)

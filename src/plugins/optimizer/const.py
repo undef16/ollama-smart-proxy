@@ -5,6 +5,7 @@ AGENT_NAME = "opt"
 
 # Optimization parameters
 SAFETY_MARGIN = 1.2
+WORKING_WINDOW_SIGNIFICANCE_THRESHOLD = 0.15
 
 # Database configuration
 DEFAULT_WORKING_WINDOW = 1024

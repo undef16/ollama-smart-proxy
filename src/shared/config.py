@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from pydantic import ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,7 +15,8 @@ from src.const import (
     DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
     LIBRARY_LOG_LEVELS,
-    CONFIG_FILE_NAME
+    CONFIG_FILE_NAME,
+    DEFAULT_DATABASE_TYPE
 )
 
 
@@ -30,6 +31,11 @@ class Config(BaseSettings):
     server_host: str = DEFAULT_SERVER_HOST
     server_port: int = DEFAULT_SERVER_PORT
     library_log_levels: Dict[str, str] = LIBRARY_LOG_LEVELS
+
+    # Database configuration
+    database_type: str = DEFAULT_DATABASE_TYPE
+    database_path: Optional[Path] = None
+    postgres_connection_string: Optional[str] = None
 
     model_config = SettingsConfigDict(
         protected_namespaces=('settings_',),

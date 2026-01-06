@@ -1,6 +1,7 @@
 """Shared test configuration and fixtures for all tests."""
 
 import pytest
+import os
 from unittest.mock import MagicMock, AsyncMock, patch
 from .test_const import (
     MOCK_CHAT_RESPONSE, MOCK_GENERATE_RESPONSE, MOCK_LIST_RESPONSE,
@@ -116,3 +117,76 @@ def assert_called_once_with_kwargs(mock_obj, **expected_kwargs):
     for key, expected_value in expected_kwargs.items():
         assert key in actual_kwargs, f"Expected keyword argument '{key}' not found in call"
         assert actual_kwargs[key] == expected_value, f"Expected {key}={expected_value}, got {actual_kwargs[key]}"
+
+
+# PostgreSQL testcontainers fixture
+_postgres_container = None
+_postgres_container_used = False
+
+
+def _get_postgres_connection_string():
+    """Get PostgreSQL connection string from environment or testcontainers."""
+    global _postgres_container, _postgres_container_used
+    
+    # First check if PostgreSQL is already available (local instance)
+    env_conn_str = os.environ.get(
+        "POSTGRES_CONNECTION_STRING",
+        "postgresql://postgres:postgres@localhost:5432/optimizer"
+    )
+    
+    # Try to use local PostgreSQL if available
+    try:
+        from sqlalchemy import create_engine, text
+        engine = create_engine(env_conn_str)
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return env_conn_str
+    except Exception:
+        pass
+    
+    # Try to use testcontainers if Docker is available
+    try:
+        from testcontainers.postgres import PostgresContainer
+        if _postgres_container is None:
+            _postgres_container = PostgresContainer("postgres:16-alpine")
+            _postgres_container.start()
+            _postgres_container_used = True
+        return _postgres_container.get_connection_url()
+    except Exception as e:
+        # Docker not available or testcontainers failed
+        return None
+
+
+@pytest.fixture(scope="session")
+def postgres_connection_string():
+    """Session-scoped fixture that provides PostgreSQL connection string.
+    
+    Tries in order:
+    1. Local PostgreSQL (via POSTGRES_CONNECTION_STRING env var)
+    2. testcontainers (spins up a PostgreSQL container)
+    3. Returns None if neither is available
+    """
+    global _postgres_container, _postgres_container_used
+    
+    conn_str = _get_postgres_connection_string()
+    yield conn_str
+    # Cleanup container after all tests (only if we started it)
+    if _postgres_container_used and _postgres_container is not None:
+        _postgres_container.stop()
+        _postgres_container = None
+        _postgres_container_used = False
+
+
+@pytest.fixture
+def postgres_repo(postgres_connection_string):
+    """Create a PostgreSQL template repository for testing.
+    
+    Skips tests if PostgreSQL is not available (neither local nor via testcontainers).
+    """
+    if postgres_connection_string is None:
+        pytest.skip("PostgreSQL not available (neither local instance nor Docker/testcontainers)")
+    
+    from src.plugins.optimizer.infrastructure.adapters.postgres_adapter import PostgreSQLTemplateRepository
+    repo = PostgreSQLTemplateRepository(connection_string=postgres_connection_string)
+    yield repo
+    repo.close()

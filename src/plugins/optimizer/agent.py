@@ -4,15 +4,18 @@ import asyncio
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from src.shared.base_agent import BaseAgent
+from src.shared.config import Config
 from src.shared.logging import LoggingManager
 
-from .db_utils import DatabaseManager
-from .simhash_utils import TemplateMatcher
-from .template_cache import TemplateCache
+from .infrastructure.factory.database_factory import DatabaseFactory
+from .infrastructure.utils.simhash_utils import TemplateMatcher
+from .infrastructure.cache.template_cache import TemplateCache
 from .const import AGENT_NAME, SAFETY_MARGIN
+from .infrastructure.utils.template_utils import TemplateUtils
+from .infrastructure.cache.cache_utils import CacheUtils
 
 
 @dataclass
@@ -28,26 +31,34 @@ class OptimizerMetadata:
 class OptimizerAgent(BaseAgent):
     """Intelligent agent for optimizing LLM inference parameters."""
 
-    def __init__(self):
-        """Initialize the optimizer agent."""
+    def __init__(
+        self,
+        repository: Optional[Any] = None
+    ):
+        """Initialize the optimizer agent.
+        
+        Args:
+            repository: Optional TemplateRepository for dependency injection.
+                        If None, creates from Config using DatabaseFactory.
+        """
         self.logger = LoggingManager.get_logger(__name__)
 
-        # Database setup
-        plugin_dir = Path(__file__).parent
-        db_path = plugin_dir / "data" / "optimizer_stats.db"
-        db_path.parent.mkdir(exist_ok=True)
-        self.db = DatabaseManager(db_path)
-
+        # Use provided repository or create from config
+        if repository is not None:
+            self.repository = repository
+        else:
+            config = Config()
+            self.repository = DatabaseFactory.create_from_config(
+                database_type=config.database_type,
+                database_path=config.database_path,
+                postgres_connection_string=config.postgres_connection_string
+            )
+        
         # Template matcher with caching
         self.template_cache = TemplateCache(max_size=512, default_ttl=1800)
-        self.matcher = TemplateMatcher(self.db, template_cache=self.template_cache)
+        self.matcher = TemplateMatcher(self.repository, template_cache=self.template_cache)
         
-        # Batch operations buffer for efficient learning
-        self._batch_learning_buffer = []
-        self._batch_learning_threshold = 10  # Learn in batches of 10 requests
-        self._batch_learning_enabled = True
-
-        self.logger.info("OptimizerAgent initialized with batch learning support")
+        self.logger.info("OptimizerAgent initialized")
 
     @property
     def name(self) -> str:
@@ -318,13 +329,13 @@ class OptimizerAgent(BaseAgent):
         if template_id is not None and distance is not None:
             loop = asyncio.get_event_loop()
             try:
-                await loop.run_in_executor(None, self.db.update_template, template_id, distance, working_window, 32)  # Default batch size of 32 when not specified
+                await loop.run_in_executor(None, self.repository.update_template, template_id, distance, working_window, 32)  # Default batch size of 32 when not specified
                 self.logger.debug(f"Updated template {template_id} with working_window {working_window}")
             except Exception as e:
                 self.logger.error(f"Error updating template {template_id}: {e}")
 
     async def _learn_new_template(self, request: Dict[str, Any], working_window: int) -> None:
-        """Learn new template from request using batch processing.
+        """Learn new template from request.
         
         Args:
             request: Request dictionary.
@@ -332,84 +343,20 @@ class OptimizerAgent(BaseAgent):
         """
         prompt_text = self._extract_prompt_text(request)
         if prompt_text and prompt_text.strip():
-            if self._batch_learning_enabled:
-                # Add to batch learning buffer
-                self._batch_learning_buffer.append({
-                    'prompt_text': prompt_text,
-                    'working_window': working_window,
-                    'optimal_batch_size': 32  # Default batch size
-                })
-                
-                # Check if we should process the batch
-                if len(self._batch_learning_buffer) >= self._batch_learning_threshold:
-                    await self._process_batch_learning()
-            else:
-                # Fallback to individual learning
-                loop = asyncio.get_event_loop()
-                try:
-                    template_id = await loop.run_in_executor(None, self.matcher.learn_template, prompt_text, working_window, 32)
-                    self.logger.debug(f"Learned new template {template_id} with working_window {working_window}")
-                    
-                    # Invalidate caches on new template learning
-                    if hasattr(self, 'template_cache') and self.template_cache:
-                        self.template_cache.clear()
-                        self.logger.debug("Template cache cleared after learning new template")
-                    
-                    if hasattr(self.matcher.simhash, 'fingerprint_cache') and self.matcher.simhash.fingerprint_cache:
-                        self.matcher.simhash.fingerprint_cache.invalidate_all()
-                        self.logger.debug("Fingerprint cache invalidated after learning new template")
-                        
-                except Exception as e:
-                    self.logger.error(f"Error learning new template: {e}")
-    
-    async def _process_batch_learning(self) -> None:
-        """Process batch learning from accumulated requests."""
-        if not self._batch_learning_buffer:
-            return
-        
-        try:
-            # Use batch operations for efficient learning
+            # Individual learning (simpler, no batch dependency)
             loop = asyncio.get_event_loop()
-            template_ids = await loop.run_in_executor(
-                None,
-                self.db.batch_operations.batch_learn_templates,
-                self._batch_learning_buffer,
-                self.matcher
-            )
-            
-            self.logger.info(f"Batch learned {len(template_ids)} templates from {len(self._batch_learning_buffer)} requests")
-            
-            # Clear the buffer after successful processing
-            self._batch_learning_buffer.clear()
-            
-            # Invalidate caches after batch learning
-            if hasattr(self, 'template_cache') and self.template_cache:
-                self.template_cache.clear()
-                self.logger.debug(f"Template cache cleared after batch learning {len(template_ids)} templates")
-            
-            if hasattr(self.matcher.simhash, 'fingerprint_cache') and self.matcher.simhash.fingerprint_cache:
-                self.matcher.simhash.fingerprint_cache.invalidate_all()
-                self.logger.debug("Fingerprint cache invalidated after batch learning")
+            try:
+                template_id = await loop.run_in_executor(None, self.matcher.learn_template, prompt_text, working_window, 32)
+                self.logger.debug(f"Learned new template {template_id} with working_window {working_window}")
                 
-        except Exception as e:
-            self.logger.error(f"Error in batch learning: {e}")
-            # Don't clear buffer on failure to allow retry
+                # Invalidate caches on new template learning
+                CacheUtils.invalidate_all_caches(self.template_cache, self.matcher.simhash.fingerprint_cache)
+                    
+            except Exception as e:
+                self.logger.error(f"Error learning new template: {e}")
     
-    async def flush_batch_learning(self) -> None:
-        """Force processing of any remaining batch learning requests."""
-        if self._batch_learning_buffer:
-            self.logger.info(f"Flushing {len(self._batch_learning_buffer)} pending batch learning requests")
-            await self._process_batch_learning()
-    
-    def enable_batch_learning(self, enabled: bool = True) -> None:
-        """Enable or disable batch learning."""
-        self._batch_learning_enabled = enabled
-        self.logger.info(f"Batch learning {'enabled' if enabled else 'disabled'}")
-    
-    def set_batch_learning_threshold(self, threshold: int) -> None:
-        """Set the batch learning threshold."""
-        if threshold > 0:
-            self._batch_learning_threshold = threshold
-            self.logger.info(f"Batch learning threshold set to {threshold}")
-        else:
-            self.logger.warning("Batch learning threshold must be positive")
+
+    def close(self) -> None:
+        """Close the repository connection and release resources."""
+        self.repository.close()
+        self.logger.info("Repository connection closed")

@@ -4,110 +4,24 @@ import threading
 import logging
 import time
 from pathlib import Path
-from typing import Dict, Optional, List, Any, Tuple
-from datetime import datetime, timedelta
-from collections import defaultdict
-from functools import lru_cache
+from typing import Dict, Optional, List, Any
+from datetime import datetime
 
-from sqlalchemy import create_engine, Integer, String, Float, Text, TIMESTAMP, func, event, Index, and_, or_, text
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import inspect
-from .const import (
+from ...const import (
     DEFAULT_WORKING_WINDOW,
     PRAGMA_JOURNAL_MODE,
     PRAGMA_SYNCHRONOUS,
     PRAGMA_CACHE_SIZE,
     DEFAULT_RESOLUTIONS,
 )
-from .query_cache import QueryCache
-from .performance_monitor import PerformanceMonitor
-from .batch_operations import BatchOperationsManager
+from .base import Base
+from ..cache.query_cache import QueryCache
+from ..performance_monitor import PerformanceMonitor
 
-
-class Base(DeclarativeBase):
-    pass
-
-
-def _hex_to_int_cached(hex_str: Optional[str]) -> Optional[int]:
-    """Convert hex string to integer with caching for performance."""
-    if hex_str is None:
-        return None
-    # Use int() directly - Python caches small integers, and the conversion
-    # itself is fast. The key optimization is avoiding repeated calls in loops.
-    return int(hex_str, 16)
-
-
-class Template(Base):
-    __tablename__ = "templates"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    template_hash: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
-    working_window: Mapped[int] = mapped_column(Integer, nullable=False, default=DEFAULT_WORKING_WINDOW)
-    observation_count: Mapped[int] = mapped_column(Integer, default=0, index=True)
-    avg_distance: Mapped[float] = mapped_column(Float, default=0.0)
-    optimal_batch_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=32)  # New field for batch size optimization
-    fingerprint_64: Mapped[Optional[str]] = mapped_column(Text, index=True)
-    fingerprint_128: Mapped[Optional[str]] = mapped_column(Text, index=True)
-    fingerprint_256: Mapped[Optional[str]] = mapped_column(Text, index=True)
-    fingerprint_512: Mapped[Optional[str]] = mapped_column(Text)
-    fingerprint_1024: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
-
-    # Additional indexes for performance optimization
-    __table_args__ = (
-        Index('idx_fingerprint_64', 'fingerprint_64'),
-        Index('idx_fingerprint_128', 'fingerprint_128'),
-        Index('idx_observation_count', 'observation_count'),
-    )
-
-    @property
-    def fingerprint_64_int(self) -> Optional[int]:
-        """Get fingerprint_64 as integer (cached conversion)."""
-        return _hex_to_int_cached(self.fingerprint_64)
-
-    @property
-    def fingerprint_128_int(self) -> Optional[int]:
-        """Get fingerprint_128 as integer (cached conversion)."""
-        return _hex_to_int_cached(self.fingerprint_128)
-
-    @property
-    def fingerprint_256_int(self) -> Optional[int]:
-        """Get fingerprint_256 as integer (cached conversion)."""
-        return _hex_to_int_cached(self.fingerprint_256)
-
-    @property
-    def fingerprint_512_int(self) -> Optional[int]:
-        """Get fingerprint_512 as integer (cached conversion)."""
-        return _hex_to_int_cached(self.fingerprint_512)
-
-    @property
-    def fingerprint_1024_int(self) -> Optional[int]:
-        """Get fingerprint_1024 as integer (cached conversion)."""
-        return _hex_to_int_cached(self.fingerprint_1024)
-
-    @property
-    def fingerprints(self) -> Dict[int, int]:
-        """Get fingerprints as dict."""
-        fps = {}
-        if self.fingerprint_64 is not None:
-            fps[64] = _hex_to_int_cached(self.fingerprint_64)
-        if self.fingerprint_128 is not None:
-            fps[128] = _hex_to_int_cached(self.fingerprint_128)
-        if self.fingerprint_256 is not None:
-            fps[256] = _hex_to_int_cached(self.fingerprint_256)
-        if self.fingerprint_512 is not None:
-            fps[512] = _hex_to_int_cached(self.fingerprint_512)
-        if self.fingerprint_1024 is not None:
-            fps[1024] = _hex_to_int_cached(self.fingerprint_1024)
-        return fps
-
-
-def _register_hamming_distance(connection):
-    """Register the hamming_distance SQLite custom function."""
-    connection.create_function("hamming_distance", 2, lambda a, b: bin(a ^ b).count("1") if a is not None and b is not None else None)
-
+from .template_model import TemplateModel
 
 class DatabaseManager:
     """Thread-safe SQLite database manager for optimizer statistics using SQLAlchemy."""
@@ -115,6 +29,11 @@ class DatabaseManager:
     _instance: Optional["DatabaseManager"] = None
     _engine = None
     _lock = threading.Lock()
+
+    @staticmethod
+    def _register_hamming_distance(connection):
+        """Register the hamming_distance SQLite custom function."""
+        connection.create_function("hamming_distance", 2, lambda a, b: bin(a ^ b).count("1") if a is not None and b is not None else None)
 
     def __new__(cls, db_path: Path) -> "DatabaseManager":
         if cls._instance is None:
@@ -130,7 +49,7 @@ class DatabaseManager:
                         dbapi_connection.execute(PRAGMA_SYNCHRONOUS)
                         dbapi_connection.execute(PRAGMA_CACHE_SIZE)
                         # Register the hamming_distance UDF for SQL-level fingerprint matching
-                        _register_hamming_distance(dbapi_connection)
+                        DatabaseManager._register_hamming_distance(dbapi_connection)
 
                     Base.metadata.create_all(cls._engine)
         return cls._instance
@@ -145,9 +64,6 @@ class DatabaseManager:
             self.query_cache = QueryCache(max_size=512, default_ttl=300)
             self.performance_monitor = PerformanceMonitor()
             self._setup_logging()
-            
-            # Initialize batch operations manager
-            self.batch_operations = BatchOperationsManager(self._engine, self.performance_monitor)
             
             
     
@@ -178,96 +94,96 @@ class DatabaseManager:
             return wrapper
         return decorator
     
-    def get_template_by_hash(self, template_hash: str) -> Optional[Template]:
+    def get_template_by_hash(self, template_hash: str) -> Optional[TemplateModel]:
         """Get template by hash with caching."""
         cache_key = f"template_by_hash:{template_hash}"
-        
+
         # Try cache first
         cached_result = self.query_cache.get(cache_key)
         if cached_result is not None:
             return cached_result
-        
+
         # Cache miss, query database
         with Session(self._engine) as session:
-            template = session.query(Template).filter(Template.template_hash == template_hash).first()
-            
+            template = session.query(TemplateModel).filter(TemplateModel.template_hash == template_hash).first()
+
             # Cache the result
             if template:
                 self.query_cache.put(cache_key, template)
-            
+
             return template
     
-    def _get_template_by_id_internal(self, template_id: int) -> Optional[Template]:
+    def _get_template_by_id_internal(self, template_id: int) -> Optional[TemplateModel]:
         """Internal method to get template by ID (used by lazy loader)."""
         with Session(self._engine) as session:
-            return session.query(Template).filter(Template.id == template_id).first()
+            return session.query(TemplateModel).filter(TemplateModel.id == template_id).first()
     
-    def _get_template_fingerprints_internal(self, template_id: int) -> Optional[Template]:
+    def _get_template_fingerprints_internal(self, template_id: int) -> Optional[TemplateModel]:
         """Internal method to get only fingerprint data for lazy loading."""
         with Session(self._engine) as session:
             # Only load fingerprint columns to save memory
-            return session.query(Template).filter(Template.id == template_id).first()
+            return session.query(TemplateModel).filter(TemplateModel.id == template_id).first()
 
-    def get_template_by_fingerprint(self, resolution: int, fingerprint: int, threshold: int) -> Optional[Template]:
+    def get_template_by_fingerprint(self, resolution: int, fingerprint: int, threshold: int) -> Optional[TemplateModel]:
         """Find template with similar fingerprint using optimized query with caching and SQL-level filtering."""
         cache_key = f"fingerprint_{resolution}:{fingerprint}:{threshold}"
-        
+
         # Try cache first
         cached_result = self.query_cache.get(cache_key)
         if cached_result is not None:
             return cached_result
-        
+
         col_name = f"fingerprint_{resolution}"
-        
+
         # Use SQL-level filtering with hamming_distance UDF instead of loading all templates
         with Session(self._engine) as session:
             # Get the column attribute
-            col = getattr(Template, col_name)
-            
+            col = getattr(TemplateModel, col_name)
+
             # Use raw SQL with the hamming_distance UDF for efficient filtering
             # This filters at the database level instead of loading all templates
             query = text(f"""
-                SELECT * FROM templates 
-                WHERE {col_name} IS NOT NULL 
+                SELECT * FROM templates
+                WHERE {col_name} IS NOT NULL
                 AND hamming_distance(cast({col_name} as integer), :fingerprint) <= :threshold
                 LIMIT 1
             """)
-            
+
             result = session.execute(query, {"fingerprint": fingerprint, "threshold": threshold})
             row = result.fetchone()
-            
+
             if row:
-                # Convert row to Template object
-                template = session.query(Template).filter(Template.id == row[0]).first()
+                # Convert row to TemplateModel object
+                template = session.query(TemplateModel).filter(TemplateModel.id == row[0]).first()
                 if template:
                     # Cache the result
                     self.query_cache.put(cache_key, template)
                     return template
-        
+
         return None
     
-    def get_templates_with_fingerprints_optimized(self) -> list[Template]:
+    def get_templates_with_fingerprints_optimized(self) -> list[TemplateModel]:
         """Get all templates that have at least one fingerprint set (optimized with caching)."""
         cache_key = "templates_with_fingerprints"
-        
+
         # Try cache first
         cached_result = self.query_cache.get(cache_key)
         if cached_result is not None:
             return cached_result
-        
+
         with Session(self._engine) as session:
             templates = (
-                session.query(Template)
+                session.query(TemplateModel)
                 .filter(
-                    Template.fingerprint_64.isnot(None)
-                    | Template.fingerprint_128.isnot(None)
-                    | Template.fingerprint_256.isnot(None)
-                    | Template.fingerprint_512.isnot(None)
-                    | Template.fingerprint_1024.isnot(None)
+                    TemplateModel.fingerprint_64.isnot(None)
+                    | TemplateModel.fingerprint_128.isnot(None)
+                    | TemplateModel.fingerprint_256.isnot(None)
+                    | TemplateModel.fingerprint_512.isnot(None)
+                    | TemplateModel.fingerprint_1024.isnot(None)
                 )
                 .all()
             )
-            
+
             # Cache the result
             self.query_cache.put(cache_key, templates, ttl=60)  # Shorter TTL for this query
             return templates
@@ -312,28 +228,13 @@ class DatabaseManager:
         """Log detailed performance summary with all metrics."""
         self.performance_monitor.log_detailed_summary(self.logger)
     
-    def get_batch_operation_stats(self) -> Dict[str, Any]:
-        """Get batch operation statistics."""
-        return self.batch_operations.get_batch_operation_stats()
-    
-    def log_batch_performance_summary(self) -> None:
-        """Log batch operations performance summary."""
-        self.batch_operations.log_batch_performance_summary()
-    
-    def perform_batch_maintenance(self) -> None:
-        """Perform batch database maintenance operations."""
-        self.batch_operations.perform_batch_maintenance()
-    
-    def validate_batch_data(self, batch_data: List[Dict[str, Any]], data_type: str = 'templates') -> bool:
-        """Validate batch data before processing."""
-        return self.batch_operations.validate_batch_data(batch_data, data_type)
-    
+
     def save_template(
         self, template_hash: str, fingerprints: Dict[int, int], working_window: int = DEFAULT_WORKING_WINDOW, optimal_batch_size: Optional[int] = None
     ) -> int:
         """Save or update template."""
         with Session(self._engine) as session:
-            existing = session.query(Template).filter(Template.template_hash == template_hash).first()
+            existing = session.query(TemplateModel).filter(TemplateModel.template_hash == template_hash).first()
             if existing:
                 existing.working_window = working_window
                 existing.optimal_batch_size = optimal_batch_size
@@ -344,7 +245,7 @@ class DatabaseManager:
                 session.commit()
                 return existing.id
             else:
-                template = Template(
+                template = TemplateModel(
                     template_hash=template_hash,
                     working_window=working_window,
                     optimal_batch_size=optimal_batch_size if optimal_batch_size is not None else 32,  # Default batch size to avoid NOT NULL constraint
@@ -361,7 +262,7 @@ class DatabaseManager:
     def update_template(self, template_id: int, new_distance: float, working_window: int, optimal_batch_size: Optional[int] = None) -> None:
         """Update template observation count, average distance, and working window if new value is greater."""
         with Session(self._engine) as session:
-            template = session.query(Template).filter(Template.id == template_id).first()
+            template = session.query(TemplateModel).filter(TemplateModel.id == template_id).first()
             if template:
                 template.observation_count += 1
                 template.avg_distance = (
@@ -379,16 +280,16 @@ class DatabaseManager:
         """Batch update multiple templates efficiently using SQLAlchemy bulk operations."""
         if not updates:
             return
-        
+
         start_time = time.perf_counter()
         try:
             # Collect all template IDs first
             template_ids = [u['template_id'] for u in updates]
-            
+
             with Session(self._engine) as session:
                 # Single query to fetch all templates at once
-                templates = {t.id: t for t in session.query(Template).filter(Template.id.in_(template_ids)).all()}
-                
+                templates = {t.id: t for t in session.query(TemplateModel).filter(TemplateModel.id.in_(template_ids)).all()}
+
                 # Apply updates using O(1) dictionary lookup
                 for update_data in updates:
                     template_id = update_data['template_id']
@@ -400,23 +301,23 @@ class DatabaseManager:
                             template.avg_distance = (
                                 template.avg_distance * (template.observation_count - 1) + update_data['new_distance']
                             ) / template.observation_count
-                        
+
                         if 'working_window' in update_data:
                             working_window = update_data['working_window']
                             if working_window < template.working_window *.85 or working_window > template.working_window * 1.15:
                                 template.working_window = working_window
-                        
+
                         if 'optimal_batch_size' in update_data:
                             template.optimal_batch_size = update_data['optimal_batch_size']
-                        
+
                         template.updated_at = datetime.now()
-                
+
                 session.commit()
-                
+
             duration = time.perf_counter() - start_time
             self.performance_monitor.record_operation('batch_update_templates', duration)
             self.logger.info(f"Batch updated {len(updates)} templates in {duration:.4f}s")
-            
+
         except SQLAlchemyError as e:
             duration = time.perf_counter() - start_time
             self.performance_monitor.record_operation('batch_update_templates', duration, False)
@@ -439,14 +340,14 @@ class DatabaseManager:
                 
                 # Collect existing template hashes for batch lookup
                 template_hashes = [td['template_hash'] for td in templates_data]
-                existing_map = {t.template_hash: t for t in session.query(Template).filter(Template.template_hash.in_(template_hashes)).all()}
-                
+                existing_map = {t.template_hash: t for t in session.query(TemplateModel).filter(TemplateModel.template_hash.in_(template_hashes)).all()}
+
                 for template_data in templates_data:
                     template_hash = template_data['template_hash']
                     fingerprints = template_data['fingerprints']
                     working_window = template_data.get('working_window', DEFAULT_WORKING_WINDOW)
                     optimal_batch_size = template_data.get('optimal_batch_size', 32)
-                    
+
                     existing = existing_map.get(template_hash)
                     if existing:
                         # Update existing template
@@ -473,13 +374,13 @@ class DatabaseManager:
                             'created_at': datetime.now(),
                             'updated_at': datetime.now(),
                         })
-                
+
                 # Bulk insert new templates
                 if new_templates:
                     # Use SQLAlchemy's bulk_insert_mappings for better performance
                     from sqlalchemy import insert
                     result = session.execute(
-                        insert(Template).returning(Template.id),
+                        insert(TemplateModel).returning(TemplateModel.id),
                         new_templates
                     )
                     new_ids = [row[0] for row in result]
@@ -499,20 +400,29 @@ class DatabaseManager:
             self.logger.error(f"Batch save failed after {duration:.4f}s: {e}")
             raise
 
-    def get_templates_with_fingerprints(self) -> list[Template]:
+    def get_templates_with_fingerprints(self) -> list[TemplateModel]:
         """Get all templates that have at least one fingerprint set."""
         with Session(self._engine) as session:
             return (
-                session.query(Template)
+                session.query(TemplateModel)
                 .filter(
-                    Template.fingerprint_64.isnot(None)
-                    | Template.fingerprint_128.isnot(None)
-                    | Template.fingerprint_256.isnot(None)
-                    | Template.fingerprint_512.isnot(None)
-                    | Template.fingerprint_1024.isnot(None)
+                    TemplateModel.fingerprint_64.isnot(None)
+                    | TemplateModel.fingerprint_128.isnot(None)
+                    | TemplateModel.fingerprint_256.isnot(None)
+                    | TemplateModel.fingerprint_512.isnot(None)
+                    | TemplateModel.fingerprint_1024.isnot(None)
                 )
                 .all()
             )
+
+    @staticmethod
+    def _hex_to_int_cached(hex_str: Optional[str]) -> Optional[int]:
+        """Convert hex string to integer with caching for performance."""
+        if hex_str is None:
+            return None
+        # Use int() directly - Python caches small integers, and the conversion
+        # itself is fast. The key optimization is avoiding repeated calls in loops.
+        return int(hex_str, 16)
 
     def close(self) -> None:
         """Close the database engine."""
