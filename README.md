@@ -148,25 +148,18 @@ Agents are activated via slash commands in user messages: `/myagent Hello world`
 The proxy comes with several built-in plugins that demonstrate the agent system's capabilities:
 
 ### Optimizer Plugin
+Intelligent agent that dynamically optimizes LLM inference parameters based on prompt similarity detection and historical performance data using SimHash algorithms. Provides 20-50% faster response times for recurring patterns.
 
-The [`src/plugins/optimizer/`](src/plugins/optimizer/) plugin is an intelligent agent that dynamically optimizes LLM inference parameters based on prompt similarity detection and historical performance data. It uses advanced algorithms like SimHash to identify recurring prompt patterns and automatically adjusts context window sizes for optimal performance.
+**Usage:** `/opt Tell me about machine learning algorithms`
 
-**Key Features:**
-- **Template Detection**: Uses SimHash algorithm for efficient similarity detection across multiple resolutions (64, 128, 256, 512, 1024 tokens)
-- **Adaptive Context Window**: Dynamically adjusts `num_ctx` parameter based on learned optimal sizes with a safety margin
-- **Multi-Level Caching**: Includes template, tokenizer, fingerprint, and query caches for performance optimization
-- **Persistent Learning**: Stores statistics across sessions using SQLite for continuous improvement
-- **Batch Processing**: Accumulates learning data for efficient database operations
+See [`src/plugins/optimizer/README.md`](src/plugins/optimizer/README.md) for details.
 
-**Performance Benefits:**
-- 20-50% faster response times for recurring prompt patterns
-- 15-30% resource reduction through optimal parameter selection
-- Maintains >90% response quality compared to baseline
+### RAG Plugin
+Retrieval-Augmented Generation plugin that enhances AI responses by retrieving relevant context from a local knowledge base and falling back to web search when necessary, implementing the Corrective RAG (CRAG) pattern.
 
-**Usage:**
-Activate via slash command: `/opt Tell me about machine learning algorithms`
+**Usage:** `/rag What is the capital of France?`
 
-For detailed technical documentation, see [`src/plugins/optimizer/README.md`](src/plugins/optimizer/README.md).
+See [`src/plugins/rag/README.md`](src/plugins/rag/README.md) for details.
 
 
 ## Performance
