@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "A lightweight proxy server for Ollama that exposes OpenAI-compatible APIs"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi",
+    "fastapi>=0.113.0,<0.123.0",
     "httpx",
     "ollama",
     "pydantic-settings",
@@ -22,10 +22,22 @@ dev = [
     "flake8",
     "pytest",
     "pytest-mock",
-    "testcontainers>=12.0.0",
+    "pytest-asyncio",
+    "testcontainers>=4.0.0",
+    "fastapi[all]",
+    "httpx",
 ]
 optimizer = [
     "psutil>=5.9.0",
+]
+rag = [
+    "lightrag",
+    "langgraph",
+    "langchain",
+    "pydantic",
+    "neo4j",
+    "psycopg2-binary",
+    "requests",
 ]
 
 [tool.black]
@@ -40,3 +52,7 @@ extend-ignore = ["E203", "W503"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "--import-mode=importlib"
+filterwarnings = [
+    "ignore:The pynvml package is deprecated. Please install nvidia-ml-py instead:FutureWarning",
+    "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning",
+]

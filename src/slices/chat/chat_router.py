@@ -35,10 +35,12 @@ class ChatRouter:
             response = await self.agent_chain.process_chat_request(request)
             self.logger.info(f"Chat router - Chat request processed successfully for model: {request.model}")
 
-            # Check if response is a generator (streaming)
-            # Handle different types of generators and iterables
-            if hasattr(response, '__iter__') and not isinstance(response, (str, bytes, dict, list)):
-                # Streaming response - handle various generator types
+            # Check if response is a streaming response
+            # Only treat async generators as streaming - regular iterables like ChatResponse should not be streamed
+            is_streaming = hasattr(response, '__aiter__') and not isinstance(response, (str, bytes, dict, list))
+            
+            if is_streaming:
+                # Streaming response - handle async generators
                 async def generate():
                     try:
                         for chunk in response:

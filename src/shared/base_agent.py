@@ -15,7 +15,7 @@ class BaseAgent(ABC):
         pass
 
     @abstractmethod
-    async def on_request(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def on_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Process the request context before sending to Ollama.
 
         Args:
@@ -23,7 +23,7 @@ class BaseAgent(ABC):
 
         Returns:
             Modified context dictionary.
-        """
+        """ 
         pass
 
     @abstractmethod
