@@ -1,0 +1,189 @@
+services:
+  # Main application service
+  ollama-smart-proxy:
+    build: .
+    container_name: proxy
+    ports:
+      - "11555:11555"
+    environment:
+      - OLLAMA_PROXY_SERVER_HOST=0.0.0.0
+      - OLLAMA_PROXY_SERVER_PORT=11555
+      - OLLAMA_PROXY_REDIS_URL=redis://redis:6379/0
+      - OLLAMA_PROXY_NEO4J_URI=bolt://neo4j:7687
+      - OLLAMA_PROXY_NEO4J_USER=neo4j
+      - OLLAMA_PROXY_NEO4J_PASSWORD=password
+      - OLLAMA_PROXY_POSTGRES_URI=postgresql://ollama_proxy:pass@postgres:5432/rag_db
+      - OLLAMA_PROXY_SEARXNG_URL=http://searxng:8080
+      # RAG Plugin Configuration
+      - NEO4J_URI=bolt://neo4j:7687
+      - POSTGRES_URI=postgresql://ollama_proxy:pass@postgres:5432/rag_db
+      - SEARXNG_HOST=http://searxng:8080
+      - RAG_THRESHOLD=0.6
+      - RAG_MAX_DOCUMENTS=5
+      - RAG_TIMEOUT_SECONDS=30
+    depends_on:
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      searxng:
+        condition: service_started
+    networks:
+      - app-network
+    volumes:
+      - ./config.json:/app/config.json
+      - ./src/plugins:/app/src/plugins
+
+  # Redis service
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # Neo4j service
+  neo4j:
+    image: neo4j:5-community
+    container_name: neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/password
+      - NEO4J_dbms_security_auth__enabled=false
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_import:/var/lib/neo4j/import
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - app-network
+
+  # PostgreSQL with vector extensions
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=rag_db
+      - POSTGRES_USER=ollama_proxy
+      - POSTGRES_PASSWORD=pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-postgres.sql:/docker-entrypoint-initdb.d/init-postgres.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ollama_proxy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # pgAdmin service
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    ports:
+      - "5050:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=pgadmin4@pgadmin.org
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # Searxng service
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    ports:
+      - "8080:8080"
+    volumes:
+      - searxng_data:/etc/searxng
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+    entrypoint:
+      - sh
+      - -c
+      - |
+        # 1) Create the patch file
+        cat >/tmp/settings.yml <<'EOF'
+        use_default_settings: true
+        server:
+          secret_key: "generaterandomkeyhere"
+        search:
+          formats:
+            - html
+            - json
+        EOF
+
+        # 2) Point SearXNG to our temporary config
+        export SEARXNG_SETTINGS_PATH="/tmp/settings.yml"
+
+        # 3) Run the image entrypoint (path differs by tag)
+        if [ -x "/usr/local/searxng/entrypoint.sh" ]; then
+          exec /usr/local/searxng/entrypoint.sh
+        elif [ -x "/usr/local/searxng/dockerfiles/docker-entrypoint.sh" ]; then
+          exec /usr/local/searxng/dockerfiles/docker-entrypoint.sh
+        else
+          echo "Critical Error: Could not find SearXNG entrypoint."
+          echo "Checked: /usr/local/searxng/entrypoint.sh and /usr/local/searxng/dockerfiles/docker-entrypoint.sh"
+          exit 1
+        fi
+
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - app-network
+
+  # Redis Insight service
+  redisinsight:
+    image: redislabs/redisinsight:latest
+    container_name: redisinsight
+    ports:
+      - "5540:5540"
+    environment:
+      - RI_GLOBAL_REDIS_HOST=redis
+      - RI_GLOBAL_REDIS_PORT=6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_import:
+  postgres_data:
+  searxng_data:
+  pgadmin_data:
