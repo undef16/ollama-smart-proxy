@@ -2,6 +2,7 @@ services:
   # Main application service
   ollama-smart-proxy:
     build: .
+    image: ollama-smart-proxy:latest
     container_name: proxy
     ports:
       - "11555:11555"
@@ -9,18 +10,12 @@ services:
       - OLLAMA_PROXY_SERVER_HOST=0.0.0.0
       - OLLAMA_PROXY_SERVER_PORT=11555
       - OLLAMA_PROXY_REDIS_URL=redis://redis:6379/0
-      - OLLAMA_PROXY_NEO4J_URI=bolt://neo4j:7687
-      - OLLAMA_PROXY_NEO4J_USER=neo4j
-      - OLLAMA_PROXY_NEO4J_PASSWORD=password
-      - OLLAMA_PROXY_POSTGRES_URI=postgresql://ollama_proxy:pass@postgres:5432/rag_db
-      - OLLAMA_PROXY_SEARXNG_URL=http://searxng:8080
+      - OLLAMA_PROXY_OLLAMA_HOST=ollama
       # RAG Plugin Configuration
-      - NEO4J_URI=bolt://neo4j:7687
-      - POSTGRES_URI=postgresql://ollama_proxy:pass@postgres:5432/rag_db
+      - LIGHTRAG_HOST=http://lightrag:9621
       - SEARXNG_HOST=http://searxng:8080
-      - RAG_THRESHOLD=0.6
-      - RAG_MAX_DOCUMENTS=5
-      - RAG_TIMEOUT_SECONDS=30
+    env_file:
+      - .env.lightrag
     depends_on:
       redis:
         condition: service_healthy
@@ -30,11 +25,53 @@ services:
         condition: service_healthy
       searxng:
         condition: service_started
+      lightrag:
+        condition: service_started
     networks:
       - app-network
     volumes:
       - ./config.json:/app/config.json
       - ./src/plugins:/app/src/plugins
+      - ./.env.lightrag:/app/.env.lightrag
+
+  # LightRAG service
+  lightrag:
+    container_name: lightrag
+    build:
+      context: ./LightRAG
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-9621}:9621"
+    volumes:
+      - ./data/rag_storage:/app/data/rag_storage
+      - ./data/inputs:/app/data/inputs
+      - ./LightRAG/config.ini:/app/config.ini
+      - ./.env.lightrag:/app/.env
+    env_file:
+      - ./.env.lightrag
+    environment:
+      - LLM_BINDING=ollama
+      - LLM_MODEL=qwen2.5-coder:1.5b
+      - LLM_BINDING_HOST=http://ollama:11434
+      - OLLAMA_LLM_NUM_CTX=32768
+      - EMBEDDING_BINDING=ollama
+      - EMBEDDING_MODEL=nomic-embed-text:latest
+      - EMBEDDING_BINDING_HOST=http://ollama:11434
+      - EMBEDDING_DIM=768
+    depends_on:
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - app-network
 
   # Redis service
   redis:
@@ -89,7 +126,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./init-postgres.sql:/docker-entrypoint-initdb.d/init-postgres.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ollama_proxy"]
+      test: ["CMD-SHELL", "pg_isready -U ollama_proxy -d rag_db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -136,6 +173,19 @@ services:
           formats:
             - html
             - json
+        engines:
+          - name: duckduckgo
+            engine: duckduckgo
+            shortcut: ddg
+          - name: google
+            engine: google
+            shortcut: gg
+          - name: wikipedia
+            engine: wikipedia
+            shortcut: wp
+          - name: bing
+            engine: bing
+            shortcut: bi
         EOF
 
         # 2) Point SearXNG to our temporary config
@@ -175,6 +225,40 @@ services:
     networks:
       - app-network
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-proxy
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Enable NVIDIA GPU access for CUDA support
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    runtime: nvidia  # Required for GPU access in Docker
+    command: serve
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:latest
+    container_name: open-webui-proxy
+    ports:
+      - "3000:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    depends_on:
+      - ollama
+    volumes:
+      - open-webui_data:/app/backend/data
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge
@@ -187,3 +271,5 @@ volumes:
   postgres_data:
   searxng_data:
   pgadmin_data:
+  ollama_data:
+  open-webui_data:

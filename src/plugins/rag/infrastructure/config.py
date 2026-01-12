@@ -20,22 +20,12 @@ class RAGConfig(BaseModel):
     """Configuration model for RAG plugin settings."""
     lightrag_host: str = Field(default="http://localhost:9621", description="LightRAG REST API host URL")
     lightrag_api_key: str = Field(default="", description="LightRAG API key for authentication")
-    neo4j_uri: str = Field(..., description="Neo4j connection URI")
-    postgres_uri: str = Field(..., description="PostgreSQL connection URI")
     searxng_host: str = Field(..., description="SearxNG host URL")
     ollama_base_url: str = Field(default="http://localhost:11434", description="Ollama base URL")
     rag_threshold: float = Field(default=0.6, ge=0.0, le=1.0, description="RAG relevance threshold")
     max_documents: int = Field(default=5, ge=1, description="Maximum number of documents to retrieve")
     timeout: int = Field(default=30, ge=1, description="Timeout in seconds")
-    cache_ttl: int = Field(default=3600, ge=1, description="Cache TTL in seconds")
-    cache_size: int = Field(default=1000, ge=1, description="Cache size limit")
-    embedding_model: str = Field(default="nomic-embed-text:latest", description="Embedding model name")
     llm_model: str = Field(default="qwen2.5-coder:1.5b", description="LLM model name")
-    working_dir: str = Field(default="./rag_data", description="Working directory for RAG data")
-    kv_storage: str = Field(default="RedisKVStorage", description="KV storage type")
-    vector_storage: str = Field(default="PGVectorStorage", description="Vector storage type")
-    graph_storage: str = Field(default="Neo4JStorage", description="Graph storage type")
-    doc_status_storage: str = Field(default="PGDocStatusStorage", description="Document status storage type")
     circuit_breaker_failure_threshold: int = Field(default=5, description="Circuit breaker failure threshold")
     circuit_breaker_recovery_timeout: float = Field(default=60.0, description="Circuit breaker recovery timeout in seconds")
     circuit_breaker_success_threshold: int = Field(default=3, description="Circuit breaker success threshold")
@@ -52,21 +42,55 @@ class RAGConfig(BaseModel):
     )
     searxng_safesearch: int = Field(default=1, ge=0, le=2, description="SearxNG safe search level (0=none, 1=moderate, 2=strict)")
 
-    def get_storage_config(self) -> Dict[str, str]:
-        """Get storage configuration as a dictionary for LightRAG initialization."""
-        return {
-            "kv_storage": self.kv_storage,
-            "vector_storage": self.vector_storage,
-            "graph_storage": self.graph_storage,
-            "doc_status_storage": self.doc_status_storage,
+    @classmethod
+    def from_env_and_json(cls, json_data: Dict) -> 'RAGConfig':
+        """Create RAGConfig from JSON data with environment variable overrides.
+
+        Environment variables will override JSON values if they exist.
+        Supported environment variables:
+        - LIGHTRAG_HOST
+        - LIGHTRAG_API_KEY
+        - NEO4J_URI
+        - POSTGRES_URI
+        - SEARXNG_HOST
+        - OLLAMA_BASE_URL
+        - RAG_THRESHOLD
+        - RAG_MAX_DOCUMENTS
+        - RAG_TIMEOUT_SECONDS
+        """
+        # Start with JSON data
+        config_data = json_data.copy()
+
+        # Override with environment variables if they exist
+        env_mappings = {
+            'LIGHTRAG_HOST': 'lightrag_host',
+            'LIGHTRAG_API_KEY': 'lightrag_api_key',
+            'SEARXNG_HOST': 'searxng_host',
+            'OLLAMA_BASE_URL': 'ollama_base_url',
+            'RAG_THRESHOLD': 'rag_threshold',
+            'RAG_MAX_DOCUMENTS': 'max_documents',
+            'RAG_TIMEOUT_SECONDS': 'timeout',
         }
 
-    def get_database_urls(self) -> Dict[str, str]:
-        """Get database connection URLs."""
-        return {
-            "neo4j_uri": self.neo4j_uri,
-            "postgres_uri": self.postgres_uri,
-        }
+        for env_var, config_key in env_mappings.items():
+            env_value = os.getenv(env_var)
+            if env_value is not None:
+                # Convert string values to appropriate types
+                if config_key in ['rag_threshold']:
+                    try:
+                        config_data[config_key] = float(env_value)
+                    except ValueError:
+                        logger.warning(f"Invalid float value for {env_var}: {env_value}")
+                elif config_key in ['max_documents', 'timeout']:
+                    try:
+                        config_data[config_key] = int(env_value)
+                    except ValueError:
+                        logger.warning(f"Invalid integer value for {env_var}: {env_value}")
+                else:
+                    config_data[config_key] = env_value
+                logger.debug(f"Overriding {config_key} with environment variable {env_var}")
+
+        return cls(**config_data)
 
 
 class ConfigurationManager:
@@ -140,7 +164,7 @@ class ConfigurationManager:
             raise ConfigurationError(error_msg)
 
         try:
-            self._config = RAGConfig(**data)
+            self._config = RAGConfig.from_env_and_json(data)
             logger.info("Configuration validated successfully")
 
         except ValidationError as e:
@@ -195,13 +219,7 @@ class ConfigurationManager:
         """Check if configuration has been loaded."""
         return self._config is not None
 
-    def get_storage_config(self) -> Dict[str, str]:
-        """Get storage configuration from loaded config."""
-        return self.get().get_storage_config()
 
-    def get_database_urls(self) -> Dict[str, str]:
-        """Get database connection URLs from loaded config."""
-        return self.get().get_database_urls()
 
     @staticmethod
     def get_config() -> RAGConfig:

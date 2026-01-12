@@ -34,6 +34,7 @@ rag = [
     "lightrag",
     "langgraph",
     "langchain",
+    "langchain_ollama",
     "pydantic",
     "neo4j",
     "psycopg2-binary",

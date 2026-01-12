@@ -1,5 +1,5 @@
 {
-  "ollama_host": "http://localhost",
+  "ollama_host": "http://ollama",
   "ollama_port": 11434,
 
   "database_type": "sqlite",

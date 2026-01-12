@@ -43,6 +43,10 @@ curl -X POST "http://localhost:11555/api/chat/" \
      -d '{"model": "qwen2.5-coder:1.5b", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
 
+## Docker Setup
+
+For Docker setup instructions, including Docker Compose configuration with supporting services (Redis, Neo4j, PostgreSQL, SearXNG), see [`DOCKER_SETUP.md`](DOCKER_SETUP.md).
+
 ## API Endpoints
 
 ### Chat Completions
