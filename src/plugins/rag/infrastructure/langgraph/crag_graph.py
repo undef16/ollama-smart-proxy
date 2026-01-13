@@ -20,6 +20,7 @@ from src.plugins.rag.infrastructure.logging import (
     RetrievalError
 )
 from src.plugins.rag.infrastructure.error_handler import ErrorHandler
+from src.shared.config import Config
 
 logger = LoggingUtils.get_rag_logger(__name__)
 
@@ -48,10 +49,13 @@ class CRAGGraph:
         self.search_service = search_service
         self.config = ConfigurationManager.get_config()
 
+        # Get app config for Ollama settings
+        app_config = Config()
+
         # Initialize LLM for grading
         self.llm = OllamaLLM(
             model=self.config.llm_model,
-            base_url=self.config.ollama_base_url
+            base_url=f"{app_config.ollama_host}:{app_config.ollama_port}"
         )
 
         # Initialize circuit breaker for Ollama service

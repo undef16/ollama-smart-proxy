@@ -66,7 +66,6 @@ cat > src/plugins/rag/config.json << EOF
   "neo4j_uri": "bolt://localhost:7687",
   "postgres_uri": "postgresql://ollama_proxy:pass@localhost:5432/rag_db",
   "searxng_host": "http://localhost:8080",
-  "ollama_base_url": "http://localhost:11434",
   "rag_threshold": 0.6,
   "max_documents": 5,
   "timeout": 30,
@@ -179,7 +178,6 @@ The RAG plugin configuration includes the following options with their default v
 - `neo4j_uri` (default: `"bolt://localhost:7687"`): Neo4j connection URI for graph storage
 - `postgres_uri` (default: `"postgresql://ollama_proxy:pass@localhost:5432/rag_db"`): PostgreSQL connection URI for vector storage
 - `searxng_host` (default: `"http://localhost:8080"`): SearxNG host URL for web search fallback
-- `ollama_base_url` (default: `"http://localhost:11434"`): Ollama base URL for LLM operations
 
 #### RAG Processing Configuration
 - `rag_threshold` (default: `0.6`): Relevance threshold for document acceptance (0.0-1.0)

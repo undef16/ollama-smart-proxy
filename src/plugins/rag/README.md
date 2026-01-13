@@ -91,7 +91,6 @@ The plugin is configured via `config.json`. Key settings include:
   "neo4j_uri": "bolt://192.168.1.138:7687",
   "postgres_uri": "postgresql://ollama_proxy:pass@192.168.1.138:5432/rag_db",
   "searxng_host": "http://192.168.1.138:8080",
-  "ollama_base_url": "http://localhost:11434",
   "rag_threshold": 0.9,
   "max_documents": 5,
   "timeout": 30,

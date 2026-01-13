@@ -21,7 +21,6 @@ class RAGConfig(BaseModel):
     lightrag_host: str = Field(default="http://localhost:9621", description="LightRAG REST API host URL")
     lightrag_api_key: str = Field(default="", description="LightRAG API key for authentication")
     searxng_host: str = Field(..., description="SearxNG host URL")
-    ollama_base_url: str = Field(default="http://localhost:11434", description="Ollama base URL")
     rag_threshold: float = Field(default=0.6, ge=0.0, le=1.0, description="RAG relevance threshold")
     max_documents: int = Field(default=5, ge=1, description="Maximum number of documents to retrieve")
     timeout: int = Field(default=30, ge=1, description="Timeout in seconds")
@@ -53,7 +52,6 @@ class RAGConfig(BaseModel):
         - NEO4J_URI
         - POSTGRES_URI
         - SEARXNG_HOST
-        - OLLAMA_BASE_URL
         - RAG_THRESHOLD
         - RAG_MAX_DOCUMENTS
         - RAG_TIMEOUT_SECONDS
@@ -66,7 +64,6 @@ class RAGConfig(BaseModel):
             'LIGHTRAG_HOST': 'lightrag_host',
             'LIGHTRAG_API_KEY': 'lightrag_api_key',
             'SEARXNG_HOST': 'searxng_host',
-            'OLLAMA_BASE_URL': 'ollama_base_url',
             'RAG_THRESHOLD': 'rag_threshold',
             'RAG_MAX_DOCUMENTS': 'max_documents',
             'RAG_TIMEOUT_SECONDS': 'timeout',
