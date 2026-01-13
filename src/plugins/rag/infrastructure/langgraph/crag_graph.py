@@ -107,7 +107,7 @@ class CRAGGraph:
         self.compiled_graph = graph.compile()
 
     @ErrorHandler.log_error_context("crag_pipeline", component="crag_graph")
-    def run(self, query_text: str) -> str:
+    async def run(self, query_text: str) -> str:
         """Run the CRAG pipeline for a query.
 
         Args:
@@ -143,7 +143,7 @@ class CRAGGraph:
                 "web_search_attempts": 0
             }
 
-            result = self.compiled_graph.invoke(initial_state)
+            result = await self.compiled_graph.ainvoke(initial_state)
             context = result.get("context", "")
 
             # Only raise error if context is empty AND we didn't reach the passthrough node intentionally
@@ -179,7 +179,7 @@ class CRAGGraph:
             LoggingUtils.log_structured_error(error, logger)
             raise error
 
-    def _retrieve_node(self, state: CRAGState) -> CRAGState:
+    async def _retrieve_node(self, state: CRAGState) -> CRAGState:
         """Retrieve documents from local RAG knowledge base."""
         logger.debug("Executing retrieve node")
 
@@ -192,7 +192,7 @@ class CRAGGraph:
             "documents": documents
         }
 
-    def _grade_documents(self, documents: List[Document], query: str) -> List[Document]:
+    async def _grade_documents(self, documents: List[Document], query: str) -> List[Document]:
         """Common method to grade document relevance."""
         if not documents:
             logger.debug("No documents to grade")
@@ -203,8 +203,8 @@ class CRAGGraph:
 
         try:
             # Make single LLM call for all documents
-            llm_response = self.ollama_circuit_breaker.call(
-                self.llm.invoke, prompt, {"format": "json"}
+            llm_response = await self.ollama_circuit_breaker.call(
+                self.llm.ainvoke, prompt, {"format": "json"}
             )
             response = llm_response.content if hasattr(llm_response, 'content') else str(llm_response)
 
@@ -238,12 +238,12 @@ class CRAGGraph:
         
         return relevant_documents
 
-    def _grade_node(self, state: CRAGState) -> CRAGState:
+    async def _grade_node(self, state: CRAGState) -> CRAGState:
         """Grade the relevance of retrieved documents using batch LLM call."""
         logger.debug("Executing grade node")
 
         documents = state["documents"]
-        relevant_documents = self._grade_documents(documents, state["query"])
+        relevant_documents = await self._grade_documents(documents, state["query"])
 
         logger.debug(f"Graded {len(documents)} documents, {len(relevant_documents)} relevant")
         return {
@@ -399,23 +399,23 @@ class CRAGGraph:
         logger.debug(f"No relevant web documents found, attempt {current_attempts}/3, proceeding to transform_query")
         return "transform_query"
 
-    def _transform_query_node(self, state: CRAGState) -> CRAGState:
+    async def _transform_query_node(self, state: CRAGState) -> CRAGState:
         """Transform the query using LLM for better web search results."""
         logger.debug("Executing transform query node")
 
         query = state["query"]
-        
+
         # Prepare the transformation prompt using the template from config
         prompt_template = self.config.query_transformation_prompt_template
         prompt = prompt_template.format(query=query)
 
         try:
             # Make LLM call to transform the query
-            llm_response = self.ollama_circuit_breaker.call(
-                self.llm.invoke, prompt, {"format": "text"}
+            llm_response = await self.ollama_circuit_breaker.call(
+                self.llm.ainvoke, prompt, {"format": "text"}
             )
             response_content = llm_response.content if hasattr(llm_response, 'content') else str(llm_response)
-            
+
             # Clean up the response to extract just the query
             # In case the LLM adds explanations, we just want the query
             transformed_query = self._extract_clean_query(response_content)
@@ -460,7 +460,7 @@ class CRAGGraph:
         # Fallback to original response if all else fails
         return response.strip()
 
-    def _web_search_node(self, state: CRAGState) -> CRAGState:
+    async def _web_search_node(self, state: CRAGState) -> CRAGState:
         """Perform web search for additional context."""
         logger.debug("Executing web search node")
 
@@ -495,7 +495,7 @@ class CRAGGraph:
                     "web_search_attempts": current_attempts + 1
                 }
             
-    def _grade_web_node(self, state: CRAGState) -> CRAGState:
+    async def _grade_web_node(self, state: CRAGState) -> CRAGState:
         """Grade the relevance of web search documents."""
         logger.debug("Executing grade web node")
 
@@ -513,7 +513,7 @@ class CRAGGraph:
             }
 
         # Use the common grading method
-        relevant_web_documents = self._grade_documents(web_documents, query)
+        relevant_web_documents = await self._grade_documents(web_documents, query)
 
         # Store relevant web documents into the RAG system for continuous learning
         if relevant_web_documents:
@@ -526,7 +526,7 @@ class CRAGGraph:
         # Handle the result using the common method
         return self._handle_web_search_attempts(state, relevant_web_documents)
 
-    def _inject_node(self, state: CRAGState) -> CRAGState:
+    async def _inject_node(self, state: CRAGState) -> CRAGState:
         """Assemble and inject the final context."""
         logger.debug("Executing inject node")
 

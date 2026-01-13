@@ -11,6 +11,9 @@ RUN apt-get update && apt-get install -y \
 # Copy project requirements first to leverage Docker cache
 COPY pyproject.toml .
 
+# Install debugpy for remote debugging
+RUN pip install --no-cache-dir debugpy
+
 # Install project dependencies
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir ".[rag]"  # Install with rag dependencies
@@ -22,4 +25,4 @@ COPY . .
 EXPOSE 11555
 
 # Command to run the application - use PYTHONPATH to include src directory
-CMD ["sh", "-c", "PYTHONPATH=/app/src:$PYTHONPATH python -m uvicorn main:app --host 0.0.0 --port 11555"]
+CMD ["sh", "-c", "PYTHONPATH=/app/src:$PYTHONPATH python main.py"]

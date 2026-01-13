@@ -16,7 +16,8 @@ from src.const import (
     DEFAULT_SERVER_PORT,
     LIBRARY_LOG_LEVELS,
     CONFIG_FILE_NAME,
-    DEFAULT_DATABASE_TYPE
+    DEFAULT_DATABASE_TYPE,
+    PROXY_HOST_URL
 )
 
 
@@ -36,6 +37,9 @@ class Config(BaseSettings):
     database_type: str = DEFAULT_DATABASE_TYPE
     database_path: Optional[Path] = None
     postgres_connection_string: Optional[str] = None
+
+    # Proxy configuration
+    proxy_host_url: str = PROXY_HOST_URL
 
     model_config = SettingsConfigDict(
         protected_namespaces=('settings_',),

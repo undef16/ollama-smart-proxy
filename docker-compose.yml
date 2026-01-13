@@ -6,14 +6,17 @@ services:
     container_name: proxy
     ports:
       - "11555:11555"
+      # - "5678:5678"  # Port for debugging
     environment:
       - OLLAMA_PROXY_SERVER_HOST=0.0.0.0
       - OLLAMA_PROXY_SERVER_PORT=11555
       - OLLAMA_PROXY_REDIS_URL=redis://redis:6379/0
-      - OLLAMA_PROXY_OLLAMA_HOST=ollama
+      - OLLAMA_PROXY_OLLAMA_HOST=http://ollama
       # RAG Plugin Configuration
       - LIGHTRAG_HOST=http://lightrag:9621
       - SEARXNG_HOST=http://searxng:8080
+      - DEBUG=false  # Enable debugging
+      - PYTHONPATH=/app/src  # Make sure Python can find modules
     env_file:
       - .env.lightrag
     depends_on:

@@ -19,11 +19,11 @@ class BaseAgent(ABC):
         """Process the request context before sending to Ollama.
 
         Args:
-            context: Request context dictionary containing request data.
+            request: Request context dictionary containing request data.
 
         Returns:
-            Modified context dictionary.
-        """ 
+            Modified request dictionary.
+        """
         pass
 
     @abstractmethod
@@ -31,7 +31,7 @@ class BaseAgent(ABC):
         """Process the response after receiving from Ollama.
 
         Args:
-            request: Request context dictionary containing request data.
+            request: Request context dictionary.
             response: Response dictionary from Ollama.
 
         Returns:

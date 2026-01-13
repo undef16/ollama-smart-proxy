@@ -5,7 +5,6 @@ from fastapi import FastAPI
 from src.shared.config import Config
 from src.shared.logging import LoggingManager
 from src.shared.plugin_registry import PluginRegistry
-from src.shared.ollama_client import OllamaClient
 from src.slices.chat.chat_router import ChatRouter
 from src.slices.generate.generate_router import GenerateRouter
 from src.slices.health.health_router import HealthRouter
@@ -23,14 +22,11 @@ class OllamaSmartProxyApp:
         # Initialize plugin registry
         self.plugin_registry = PluginRegistry()
 
-        # Initialize Ollama client
-        self.ollama_client = OllamaClient()
-
         # Initialize routers
-        self.chat_router = ChatRouter.get_router(self.plugin_registry, self.ollama_client)
-        self.generate_router = GenerateRouter.get_router(self.plugin_registry, self.ollama_client)
-        self.health_router = HealthRouter.get_router(self.ollama_client)
-        self.passthrough_router = PassthroughRouter.get_router(self.ollama_client)
+        self.chat_router = ChatRouter.get_router(self.plugin_registry)
+        self.generate_router = GenerateRouter.get_router(self.plugin_registry)
+        self.health_router = HealthRouter.get_router()
+        self.passthrough_router = PassthroughRouter.get_router()
         self.plugins_router = PluginsRouter.get_router(self.plugin_registry)
 
         # Create FastAPI app
@@ -55,6 +51,25 @@ app = app_instance.app
 
 if __name__ == "__main__":
     import uvicorn
-
+    
+    # Enable debugging if in development
+    import os
+    debug_mode = os.getenv('DEBUG', '').lower() in ('1', 'true', 'yes')
+    
+    if debug_mode:
+        import debugpy
+        debugpy.listen(("0.0.0.0", 5678))
+        print("Waiting for debugger to attach on port 5678...")
+        debugpy.wait_for_client()
+        
     server_config = Config()
-    uvicorn.run(app, host=server_config.server_host, port=server_config.server_port)
+    
+    # Only use reload in non-Docker environments for development
+    reload_option = debug_mode and not os.path.exists('/.dockerenv')
+    
+    uvicorn.run(
+        app,
+        host=server_config.server_host,
+        port=server_config.server_port,
+        reload=reload_option  # Only enable hot reloading when not in Docker and in debug mode
+    )

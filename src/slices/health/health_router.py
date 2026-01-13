@@ -1,23 +1,24 @@
+import ollama
 from fastapi import APIRouter
 from typing import Dict, Any
 
 from shared.logging import LoggingManager
+from shared.config import Config
 from src.const import HEALTH_STATUS_HEALTHY, HEALTH_STATUS_UNHEALTHY, HEALTH_PROXY_STATUS_OK, HEALTH_UPSTREAM_STATUS_OK, HEALTH_UPSTREAM_STATUS_ERROR
 
 
 class HealthRouter:
     """Router for health endpoints."""
 
-    def __init__(self, ollama_client):
-        self.ollama_client = ollama_client
+    def __init__(self):
         self.router = APIRouter(prefix="/health", tags=["health"])
         self.logger = LoggingManager.get_logger(__name__)
         self.router.get("", response_model=Dict[str, Any])(self.health_check)
 
     @classmethod
-    def get_router(cls, ollama_client) -> APIRouter:
+    def get_router(cls) -> APIRouter:
         """Get the router instance."""
-        return cls(ollama_client).router
+        return cls().router
 
     async def health_check(self) -> Dict[str, Any]:
         """Check health of proxy and upstream Ollama server."""
@@ -27,7 +28,9 @@ class HealthRouter:
         try:
             self.logger.debug("Checking upstream Ollama health")
             # Ping upstream by listing models
-            await self.ollama_client.list()
+            config = Config()
+            client = ollama.Client(host=f"{config.ollama_host}:{config.ollama_port}")
+            client.list()
             self.logger.debug("Upstream Ollama health check passed")
         except Exception as e:
             upstream_status = HEALTH_UPSTREAM_STATUS_ERROR

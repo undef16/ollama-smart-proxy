@@ -1,62 +1,38 @@
+import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Union, Iterator
 import json
 
 from shared.logging import LoggingManager
-from .agent_chain import GenerateChain, GenerateRequest
-from src.const import HTTP_ERROR, RESPONSE_FIELD, DONE_FIELD, ERROR_FIELD, STREAMING_MEDIA_TYPE, CACHE_CONTROL_NO_CACHE
+from ..base_router import BaseRouter
+from .generate_agent_chain import GenerateAgentChain
+from src.const import HTTP_ERROR, RESPONSE_FIELD, DONE_FIELD, ERROR_FIELD, STREAMING_MEDIA_TYPE, CACHE_CONTROL_NO_CACHE, MODEL_FIELD, PROMPT_FIELD, STREAM_FIELD, AGENTS_FIELD
 
 
-class GenerateRouter:
+class GenerateRouter(BaseRouter):
     """Router for generate endpoints."""
 
-    def __init__(self, registry, ollama_client):
+    chain_class = GenerateAgentChain
+    tag = "generate"
 
+    def __init__(self, registry):
+        super().__init__(registry)
         self.logger = LoggingManager.get_logger(__name__)
-        self.generate_chain = GenerateChain(registry, ollama_client)
 
-        self.router = APIRouter(tags=["generate"])
+    def add_routes(self):
         self.router.post("/api/generate", response_model=None)(self.generate)
 
     @classmethod
-    def get_router(cls, registry, ollama_client) -> APIRouter:
+    def get_router(cls, registry) -> APIRouter:
         """Get the router instance."""
-        return cls(registry, ollama_client).router
+        return cls(registry).router
 
-    async def generate(self, request: GenerateRequest) -> Union[Any, StreamingResponse]:
+    async def generate(self, request: Dict[str, Any]) -> Union[Any, StreamingResponse]:
         """Handle generate requests and forward to Ollama."""
         try:
-            self.logger.info(f"Generate router - Processing generate request for model: {request.model}")
-            response = await self.generate_chain.process_generate_request(request)
-            self.logger.info(f"Generate router - Generate request processed successfully for model: {request.model}")
-
-            # Check if response is a generator (streaming)
-            # Handle different types of generators and iterables
-            if hasattr(response, '__iter__') and not isinstance(response, (str, bytes, dict, list)):
-                # Streaming response - handle various generator types
-                async def generate():
-                    try:
-                        for chunk in response:
-                            # Ensure chunk is a dictionary before JSON serialization
-                            if isinstance(chunk, dict):
-                                yield json.dumps(chunk, ensure_ascii=False) + "\n"
-                            else:
-                                # Handle non-dict chunks by wrapping them
-                                yield json.dumps({RESPONSE_FIELD: str(chunk), DONE_FIELD: False}) + "\n"
-                    except Exception as e:
-                        self.logger.error(f"Error in streaming generation: {str(e)}")
-                        # Send error chunk
-                        yield json.dumps({ERROR_FIELD: str(e), DONE_FIELD: True}) + "\n"
-
-                return StreamingResponse(
-                    generate(),
-                    media_type=STREAMING_MEDIA_TYPE,
-                    headers={"Cache-Control": CACHE_CONTROL_NO_CACHE}
-                )
-            else:
-                # Non-streaming response
-                return response
+            response = await self.chain.process_request(request)
+            return response
         except Exception as e:
-            self.logger.error(f"Error processing generate request: {str(e)}")
+            self.logger.error(f"Error processing generate request: {str(e)}", stack_info=True)
             raise HTTPException(status_code=HTTP_ERROR, detail="Internal server error")

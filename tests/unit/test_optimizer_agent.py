@@ -62,7 +62,7 @@ class TestOptimizerAgent:
     async def test_on_request_with_prompt(self, optimizer_agent):
         """Test on_request with prompt."""
         with patch.object(optimizer_agent, '_extract_prompt_text', return_value=TEST_PROMPT), \
-             patch.object(optimizer_agent, '_find_matching_template_async', return_value=None):
+              patch.object(optimizer_agent, '_find_matching_template', return_value=None):
             context = {"model": TEST_MODEL, "prompt": TEST_PROMPT}
             result = await optimizer_agent.on_request(context)
             assert result == context
@@ -80,8 +80,8 @@ class TestOptimizerAgent:
         mock_match['template'].working_window = 1024
 
         with patch.object(optimizer_agent, '_extract_prompt_text', return_value=TEST_PROMPT), \
-             patch.object(optimizer_agent, '_find_matching_template_async', return_value=mock_match), \
-             patch.object(optimizer_agent, '_apply_optimizations') as mock_apply:
+              patch.object(optimizer_agent, '_find_matching_template', return_value=mock_match), \
+              patch.object(optimizer_agent, '_apply_optimizations') as mock_apply:
             context = {"model": TEST_MODEL, "prompt": TEST_PROMPT}
             result = await optimizer_agent.on_request(context)
 

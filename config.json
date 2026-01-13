@@ -1,5 +1,5 @@
 {
-  "ollama_host": "http://ollama",
+  "ollama_host": "http://localhost",
   "ollama_port": 11434,
 
   "database_type": "sqlite",
@@ -11,6 +11,7 @@
   "agent_command_pattern": "^\\s*/(\\w+)\\s*",
   "server_host": "0.0.0.0",
   "server_port": 11555,
+  "proxy_host_url": "http://192.168.1.195",
   "library_log_levels": {
     "uvicorn": "WARNING",
     "uvicorn.access": "WARNING",

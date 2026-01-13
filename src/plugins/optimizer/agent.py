@@ -87,11 +87,11 @@ class OptimizerAgent(BaseAgent):
                 self.logger.debug("No valid prompt text found, skipping optimization")
                 return request
 
-            # Find matching template asynchronously
-            match = await self._find_matching_template_async(prompt_text)
+            # Find matching template
+            match = self._find_matching_template(prompt_text)
 
             if match:
-                await self._apply_template_match(request, match)
+                self._apply_template_match(request, match)
 
             processing_time = time.time() - start_time
             self.logger.debug(f"Request processing completed in {processing_time:.3f}s")
@@ -252,8 +252,8 @@ class OptimizerAgent(BaseAgent):
         else:
             self.logger.debug("No valid working window to apply")
 
-    async def _find_matching_template_async(self, prompt_text: str) -> Optional[Dict[str, Any]]:
-        """Asynchronously find matching template.
+    def _find_matching_template(self, prompt_text: str) -> Optional[Dict[str, Any]]:
+        """Find matching template.
 
         Args:
             prompt_text: Text to match.
@@ -261,14 +261,13 @@ class OptimizerAgent(BaseAgent):
         Returns:
             Match dictionary or None.
         """
-        loop = asyncio.get_event_loop()
         try:
-            return await loop.run_in_executor(None, self.matcher.find_matching_template, prompt_text)
+            return self.matcher.find_matching_template(prompt_text)
         except Exception as e:
             self.logger.error(f"Error finding matching template: {e}")
             return None
 
-    async def _apply_template_match(self, request: Dict[str, Any], match: Dict[str, Any]) -> None:
+    def _apply_template_match(self, request: Dict[str, Any], match: Dict[str, Any]) -> None:
         """Apply template match optimizations.
 
         Args:
@@ -327,9 +326,8 @@ class OptimizerAgent(BaseAgent):
         distance = optimizer_meta.distance
 
         if template_id is not None and distance is not None:
-            loop = asyncio.get_event_loop()
             try:
-                await loop.run_in_executor(None, self.repository.update_template, template_id, distance, working_window, 32)  # Default batch size of 32 when not specified
+                self.repository.update_template(template_id, distance, working_window, 32)  # Default batch size of 32 when not specified
                 self.logger.debug(f"Updated template {template_id} with working_window {working_window}")
             except Exception as e:
                 self.logger.error(f"Error updating template {template_id}: {e}")
@@ -344,14 +342,13 @@ class OptimizerAgent(BaseAgent):
         prompt_text = self._extract_prompt_text(request)
         if prompt_text and prompt_text.strip():
             # Individual learning (simpler, no batch dependency)
-            loop = asyncio.get_event_loop()
             try:
-                template_id = await loop.run_in_executor(None, self.matcher.learn_template, prompt_text, working_window, 32)
+                template_id = self.matcher.learn_template(prompt_text, working_window, 32)
                 self.logger.debug(f"Learned new template {template_id} with working_window {working_window}")
-                
+
                 # Invalidate caches on new template learning
                 CacheUtils.invalidate_all_caches(self.template_cache, self.matcher.simhash.fingerprint_cache)
-                    
+
             except Exception as e:
                 self.logger.error(f"Error learning new template: {e}")
     

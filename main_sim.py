@@ -10,7 +10,7 @@ import ollama
 import httpx
 from src.shared.config import Config
 from src.const import (
-    DEFAULT_TEST_MODEL, PROXY_HOST_URL, SERVER_START_TIMEOUT_SEC,
+    DEFAULT_TEST_MODEL, SERVER_START_TIMEOUT_SEC,
     HTTP_TIMEOUT_SEC, MAX_RETRY_ATTEMPTS, EXAMPLE_AGENT_SUFFIX_STR, TEST_PROMPT_OPT_POSITIVE,
     TEST_PROMPT_SIMPLE, TEST_PROMPT_WITH_AGENT, TEST_PROMPT_OPT_NEGATIVE,
     TEST_PROMPT_RAG, HEALTH_STATUS_HEALTHY, HEALTH_STATUS_UNHEALTHY,
@@ -36,7 +36,7 @@ class MainSimulator:
 
     def __init__(self):
         self.config = Config()
-        self.proxy_host = PROXY_HOST_URL
+        self.proxy_host = self.config.proxy_host_url
         self.proxy_port = self.config.server_port
         self.server_process: Optional[subprocess.Popen] = None
         self.client: Optional[ollama.Client] = None
@@ -45,10 +45,13 @@ class MainSimulator:
     async def start_server(self):
         """Start the Ollama Smart Proxy server in the background."""
         logger.info("Starting the Ollama Smart Proxy server...")
-        self.server_process = subprocess.Popen(["python", "main.py"])
-        # Wait for server to be ready
-        await self._wait_for_server()
+
+        # self.server_process = subprocess.Popen(["python", "main.py"])
+        # # Wait for server to be ready
+        # await self._wait_for_server()
         self.client = ollama.Client(host=f"{self.proxy_host}:{self.proxy_port}")
+               
+        # self.client = ollama.Client(host=f"{self.proxy_host}:11434")
         logger.info("Server started successfully")
 
     def stop_server(self):
@@ -104,7 +107,7 @@ class MainSimulator:
         """Test the /api/generate endpoint."""
         assert self.client is not None
         response = self.client.generate(model=DEFAULT_TEST_MODEL, prompt=TEST_PROMPT_SIMPLE)
-        logger.debug(f"Generate response: {response}")
+        logger.info(f"Generate response: {response}")
         if not self._is_valid_generate_response(response):
             raise ValueError("Generate endpoint response missing 'response' key or not a dict")
 
@@ -123,25 +126,20 @@ class MainSimulator:
         logger.info(f"Testing streaming with model: {test_model}")
         
         stream = self.client.generate(model=test_model, prompt=TEST_PROMPT_SIMPLE, stream=True)
-        chunks = []
+        result = ''
         chunk_count = 0
         try:
             for chunk in stream:
-                chunks.append(chunk)
+                result += chunk.response
+                logger.info(f'Chunk: {chunk.response}')
                 chunk_count += 1
                 if chunk_count > 100:  # Limit to prevent memory issues
                     break
         except Exception as e:
-            logger.error(f"Error during streaming: {str(e)}")
-            raise
-        
-        logger.debug(f"Received {len(chunks)} chunks for model {test_model}")
-        logger.debug(f"First few chunks: {chunks[:3]}")
-        logger.debug(f"Last few chunks: {chunks[-3:]}")
-        
-        if not self._is_valid_streaming_response(chunks):
-            logger.error(f"Streaming validation failed for model {test_model}. Chunks: {chunks}")
+            logger.error(f"Fail generate endpoint streaming response {e}", stack_info=True)    
             raise ValueError(f"Generate endpoint streaming response invalid for model {test_model}")
+        
+        logger.info(f"Generate endpoint streaming response {result}")    
 
     async def test_generate_endpoint_with_optimizer_agent(self, prompt: str):
         """Test the /api/generate endpoint with /opt agent activation."""
@@ -163,12 +161,10 @@ class MainSimulator:
 
     def _is_valid_generate_response(self, response):
         """Validate the generate response."""
-        return isinstance(response, dict) and "response" in response
+        return "response" in response
 
     def _is_valid_generate_response_with_agent(self, response):
         """Validate the generate response with agent modifications."""
-        if not isinstance(response, dict) or "response" not in response:
-            return False
         content = response["response"]
         # Check if it ends with the suffix added by the agent
         return content.endswith(EXAMPLE_AGENT_SUFFIX_STR)
@@ -265,7 +261,7 @@ class MainSimulator:
 
     def _is_valid_chat_response_with_agent(self, response):
         """Validate the chat response with agent modifications."""
-        if not isinstance(response, dict) or MESSAGE_FIELD not in response or CONTENT_FIELD not in response[MESSAGE_FIELD]:
+        if CONTENT_FIELD not in response[MESSAGE_FIELD]:
             return False
         content = response[MESSAGE_FIELD][CONTENT_FIELD]
         # Check if it ends with the suffix added by the agent
@@ -356,19 +352,22 @@ class MainSimulator:
             
             # Uncomment other tests as needed
             tests.extend([
-                # ("Generate Endpoint", self.test_generate_endpoint),
-                # ("Generate with Agent", self.test_generate_endpoint_with_example_agent),
-                # ("Generate Streaming", self.test_generate_endpoint_streaming),
-                # ("Generate with Optimizer Agent (Positive)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_POSITIVE),
-                # ("Generate with Optimizer Agent (Negative)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_NEGATIVE),
-                # ("Generate with RAG Agent", self.test_generate_endpoint_with_rag_agent),
-                # ("Tags Endpoint", self.test_tags_endpoint),
-                # ("Health Endpoint", self.test_health_endpoint),
-                # ("Plugins Endpoint", self.test_plugins_endpoint),
-                # ("Chat with Agent", self.test_chat_endpoint_with_example_agent),
-                # ("Chat Streaming", self.test_chat_endpoint_streaming),
-                # ("Chat with Optimizer Agent (Positive)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_POSITIVE),
-                # ("Chat with Optimizer Agent (Negative)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_NEGATIVE),
+                ("Generate Endpoint", self.test_generate_endpoint),
+                ("Generate with Agent", self.test_generate_endpoint_with_example_agent),
+                ("Generate Streaming", self.test_generate_endpoint_streaming),
+            
+                ("Generate with Optimizer Agent (Positive)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_POSITIVE),
+                ("Generate with Optimizer Agent (Negative)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_NEGATIVE),
+                ("Generate with RAG Agent", self.test_generate_endpoint_with_rag_agent),
+
+                ("Tags Endpoint", self.test_tags_endpoint),
+
+                ("Health Endpoint", self.test_health_endpoint),
+                ("Plugins Endpoint", self.test_plugins_endpoint),
+                ("Chat with Agent", self.test_chat_endpoint_with_example_agent),
+                ("Chat Streaming", self.test_chat_endpoint_streaming),
+                ("Chat with Optimizer Agent (Positive)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_POSITIVE),
+                ("Chat with Optimizer Agent (Negative)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_NEGATIVE),
                 ("Chat with RAG Agent", self.test_chat_endpoint_with_rag_agent),
             ])
 

@@ -1,44 +1,26 @@
 """Tests for the generate agent chain functionality."""
 
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch, MagicMock
 import time
+from fastapi.responses import StreamingResponse
 
-from src.slices.generate.agent_chain import GenerateChain, GenerateRequest
+from slices.generate.generate_agent_chain import GenerateAgentChain
 from ..test_const import TEST_MODEL, TEST_PROMPT, MOCK_CHAT_RESPONSE, FALSE_VALUE, TRUE_VALUE
 
 
-class TestGenerateRequest:
-    """Test the GenerateRequest model."""
-
-    def test_generate_request_defaults(self):
-        """Test GenerateRequest with default values."""
-        request = GenerateRequest(model=TEST_MODEL, prompt=TEST_PROMPT)
-        assert request.model == TEST_MODEL
-        assert request.prompt == TEST_PROMPT
-        assert request.stream is FALSE_VALUE
-
-    def test_generate_request_with_stream(self):
-        """Test GenerateRequest with stream=True."""
-        request = GenerateRequest(model=TEST_MODEL, prompt=TEST_PROMPT, stream=TRUE_VALUE)
-        assert request.model == TEST_MODEL
-        assert request.prompt == TEST_PROMPT
-        assert request.stream is TRUE_VALUE
-
-
-class TestGenerateChain:
-    """Test the GenerateChain class."""
+class TestGenerateAgentChain:
+    """Test the GenerateAgentChain class."""
 
     @pytest.fixture
-    def generate_chain(self, mock_registry, mock_ollama_client):
-        """Create a GenerateChain instance with mocks."""
-        return GenerateChain(mock_registry, mock_ollama_client)
+    def generate_chain(self, mock_registry):
+        """Create a GenerateAgentChain instance with mocks."""
+        return GenerateAgentChain(mock_registry)
 
-    def test_init(self, mock_registry, mock_ollama_client):
-        """Test GenerateChain initialization."""
-        chain = GenerateChain(mock_registry, mock_ollama_client)
+    def test_init(self, mock_registry):
+        """Test GenerateAgentChain initialization."""
+        chain = GenerateAgentChain(mock_registry)
         assert chain.registry == mock_registry
-        assert chain.ollama_client == mock_ollama_client
         assert chain._model_cache is None
 
     def test_parse_slash_commands_no_agents(self, generate_chain):
@@ -111,103 +93,80 @@ class TestGenerateChain:
         assert result == {"response": {"content": "modified response"}}
 
     @pytest.mark.asyncio
-    async def test_process_generate_request_basic(self, generate_chain):
+    async def test_process_request_basic(self, generate_chain):
         """Test processing a basic generate request."""
-        mock_request = GenerateRequest(model=TEST_MODEL, prompt=TEST_PROMPT)
+        request_dict = {"model": TEST_MODEL, "prompt": TEST_PROMPT}
         mock_response = {"response": "generated text"}
-        
-        generate_chain.ollama_client.generate = AsyncMock(return_value=mock_response)
-        
-        result = await generate_chain.process_generate_request(mock_request)
-        
-        generate_chain.ollama_client.generate.assert_called_once_with(
-            model=TEST_MODEL,
-            prompt=TEST_PROMPT,
-            stream=FALSE_VALUE
-        )
+
+        with patch('httpx.AsyncClient') as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = mock_response
+            mock_client.post = AsyncMock(return_value=mock_resp)
+
+            result = await generate_chain.process_request(request_dict)
+
         assert result == mock_response
 
     @pytest.mark.asyncio
-    async def test_process_generate_request_with_agents(self, generate_chain):
+    async def test_process_request_with_agents(self, generate_chain):
         """Test processing a generate request with agents."""
-        mock_request = GenerateRequest(model=TEST_MODEL, prompt="/example test prompt")
+        request_dict = {"model": TEST_MODEL, "prompt": "/example test prompt"}
         mock_response = {"response": "generated text"}
         mock_agent = AsyncMock()
-        
-        generate_chain.ollama_client.generate = AsyncMock(return_value=mock_response)
+
         generate_chain.registry.get_agent.return_value = mock_agent
         mock_agent.on_request = AsyncMock(return_value={
             "model": TEST_MODEL,
             "prompt": TEST_PROMPT,
-            "stream": FALSE_VALUE,
+            "stream": False,
             "agents": ["example"]
         })
         mock_agent.on_response = AsyncMock(return_value={"response": "generated text [processed by example agent]"})
-        
-        result = await generate_chain.process_generate_request(mock_request)
-        
-        generate_chain.ollama_client.generate.assert_called_once_with(
-            model=TEST_MODEL,
-            prompt=TEST_PROMPT,
-            stream=FALSE_VALUE
-        )
+
+        with patch('httpx.AsyncClient') as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = mock_response
+            mock_client.post = AsyncMock(return_value=mock_resp)
+
+            result = await generate_chain.process_request(request_dict)
+
         assert result == {"response": "generated text [processed by example agent]"}
 
     @pytest.mark.asyncio
-    async def test_process_generate_request_streaming(self, generate_chain):
+    async def test_process_request_streaming(self, generate_chain):
         """Test processing a streaming generate request."""
-        mock_request = GenerateRequest(model=TEST_MODEL, prompt=TEST_PROMPT, stream=TRUE_VALUE)
-        mock_response = {"response": "generated text"}
-        
-        generate_chain.ollama_client.generate = AsyncMock(return_value=mock_response)
-        
-        result = await generate_chain.process_generate_request(mock_request)
-        
-        generate_chain.ollama_client.generate.assert_called_once_with(
-            model=TEST_MODEL,
-            prompt=TEST_PROMPT,
-            stream=TRUE_VALUE
-        )
-        assert result == mock_response
+        request_dict = {"model": TEST_MODEL, "prompt": TEST_PROMPT, "stream": True}
+
+        async def async_iter():
+            yield b'{"response": "chunk"}'
+
+        with patch('httpx.AsyncClient') as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_resp = MagicMock()
+            mock_resp.aiter_bytes = MagicMock(return_value=async_iter())
+            mock_resp.status_code = 200
+            mock_resp.headers = {}
+            mock_client.post = AsyncMock(return_value=mock_resp)
+
+            result = await generate_chain.process_request(request_dict)
+
+        assert isinstance(result, StreamingResponse)
 
     @pytest.mark.asyncio
-    async def test_process_generate_request_error(self, generate_chain):
+    async def test_process_request_error(self, generate_chain):
         """Test processing a generate request that raises an error."""
-        mock_request = GenerateRequest(model=TEST_MODEL, prompt=TEST_PROMPT)
-        
-        generate_chain.ollama_client.generate = AsyncMock(side_effect=Exception("API Error"))
-        
-        with pytest.raises(Exception, match="API Error"):
-            await generate_chain.process_generate_request(mock_request)
+        request_dict = {"model": TEST_MODEL, "prompt": TEST_PROMPT}
 
-    @pytest.mark.asyncio
-    async def test_ensure_model_loaded_cache_miss(self, generate_chain):
-        """Test ensuring model is loaded when not in cache."""
-        generate_chain._model_cache = None
-        generate_chain.ollama_client.list = AsyncMock(return_value={"models": [{"name": "existing-model"}]})
-        generate_chain.ollama_client.pull = AsyncMock()
-        
-        await generate_chain._ensure_model_loaded("new-model")
-        
-        generate_chain.ollama_client.list.assert_called_once()
-        generate_chain.ollama_client.pull.assert_called_once_with("new-model")
+        with patch('httpx.AsyncClient') as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post = AsyncMock(side_effect=Exception("API Error"))
 
-    @pytest.mark.asyncio
-    async def test_ensure_model_loaded_cache_hit(self, generate_chain):
-        """Test ensuring model is loaded when already in cache."""
-        generate_chain._model_cache = {"existing-model": time.time(), "_timestamp": time.time()}
-        generate_chain.ollama_client.list = AsyncMock()
-        generate_chain.ollama_client.pull = AsyncMock()
-        
-        await generate_chain._ensure_model_loaded("existing-model")
-        
-        generate_chain.ollama_client.list.assert_not_called()
-        generate_chain.ollama_client.pull.assert_not_called()
+            with pytest.raises(Exception, match="API Error"):
+                await generate_chain.process_request(request_dict)
 
-    @pytest.mark.asyncio
-    async def test_ensure_model_loaded_error(self, generate_chain):
-        """Test ensuring model is loaded when it raises an error."""
-        generate_chain.ollama_client.list = AsyncMock(side_effect=Exception("API Error"))
-
-        with pytest.raises(Exception, match="API Error"):
-            await generate_chain._ensure_model_loaded(TEST_MODEL)

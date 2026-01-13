@@ -133,17 +133,17 @@ class RagAgent(BaseAgent):
         try:
             # Ensure agent is initialized
             self._ensure_initialized()
-            
+
             if self._crag_graph is None:
                 raise RagError("CRAG graph not initialized")
-                       
+
             new_request = request.copy()
             # Extract query from context (handles both chat messages and generate prompts)
             query_text = self._extract_query_from_prompt(new_request)
 
             # Run CRAG pipeline
-            context_result = self._crag_graph.run(query_text)
-            
+            context_result = await self._crag_graph.run(query_text)
+
             # Format the system context using the template from config
             system_context = self.config.system_context.format(context=context_result, query=query_text)
 
