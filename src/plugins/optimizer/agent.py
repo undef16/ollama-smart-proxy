@@ -144,6 +144,7 @@ class OptimizerAgent(BaseAgent):
             self._request_count = 1
 
         return response
+
     
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get comprehensive cache statistics.

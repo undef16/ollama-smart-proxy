@@ -2,6 +2,7 @@
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from typing import List
+import asyncio
 
 from src.plugins.rag.infrastructure.langgraph.crag_graph import CRAGGraph, CRAGState
 from src.plugins.rag.domain.entities.document import Document
@@ -29,7 +30,7 @@ class TestCRAGGraph:
     def test_run_with_empty_query_raises_error(self):
         """Test that running with empty query raises RetrievalError."""
         with pytest.raises(Exception) as exc_info:
-            self.crag_graph.run("")
+            asyncio.run(self.crag_graph.run(""))
         
         # Should raise a RetrievalError or similar
         assert "Query text cannot be empty" in str(exc_info.value)
@@ -37,7 +38,7 @@ class TestCRAGGraph:
     def test_run_with_whitespace_query_raises_error(self):
         """Test that running with whitespace-only query raises RetrievalError."""
         with pytest.raises(Exception) as exc_info:
-            self.crag_graph.run("   ")
+            asyncio.run(self.crag_graph.run("   "))
         
         assert "Query text cannot be empty" in str(exc_info.value)
 
@@ -58,7 +59,7 @@ class TestCRAGGraph:
         }
 
         # Execute
-        result = self.crag_graph._retrieve_node(initial_state)
+        result = asyncio.run(self.crag_graph._retrieve_node(initial_state))
 
         # Assert
         assert result["documents"] == [mock_document]
@@ -80,7 +81,7 @@ class TestCRAGGraph:
         }
 
         # Execute
-        result = self.crag_graph._grade_node(initial_state)
+        result = asyncio.run(self.crag_graph._grade_node(initial_state))
 
         # Assert
         assert "relevant_documents" in result
@@ -127,7 +128,7 @@ class TestCRAGGraph:
         }
 
         # Execute
-        result = self.crag_graph._transform_query_node(initial_state)
+        result = asyncio.run(self.crag_graph._transform_query_node(initial_state))
 
         # Assert
         assert "query" in result
@@ -150,7 +151,7 @@ class TestCRAGGraph:
         }
 
         # Execute
-        result = self.crag_graph._web_search_node(initial_state)
+        result = asyncio.run(self.crag_graph._web_search_node(initial_state))
 
         # Assert
         assert result["web_documents"] == [mock_web_doc]
@@ -172,7 +173,7 @@ class TestCRAGGraph:
         }
 
         # Execute
-        result = self.crag_graph._grade_web_node(initial_state)
+        result = asyncio.run(self.crag_graph._grade_web_node(initial_state))
 
         # Assert
         assert "web_documents" in result
@@ -236,7 +237,7 @@ class TestCRAGGraph:
         }
 
         # Execute
-        result = self.crag_graph._inject_node(initial_state)
+        result = asyncio.run(self.crag_graph._inject_node(initial_state))
 
         # Assert
         assert "context" in result
@@ -255,14 +256,14 @@ class TestCRAGGraph:
         }
 
         # Execute
-        result = self.crag_graph._inject_node(initial_state)
+        result = asyncio.run(self.crag_graph._inject_node(initial_state))
 
         # Assert
         assert result["context"] == ""
 
     def test_grade_documents_empty_documents(self):
         """Test _grade_documents with empty documents list."""
-        result = self.crag_graph._grade_documents([], "test query")
+        result = asyncio.run(self.crag_graph._grade_documents([], "test query"))
         assert result == []
 
     def test_handle_web_search_attempts_with_relevant_docs(self):
@@ -347,5 +348,5 @@ class TestCRAGState:
         assert state["web_documents"] == []
         assert state["context"] == ""
         assert state["web_search_attempts"] == 0
-
+        
         assert state["web_search_attempts"] == 0

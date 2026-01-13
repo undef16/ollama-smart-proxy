@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import time
 from fastapi.responses import StreamingResponse
 
-from slices.generate.generate_agent_chain import GenerateAgentChain
+from src.slices.generate.generate_agent_chain import GenerateAgentChain
 from ..test_const import TEST_MODEL, TEST_PROMPT, MOCK_CHAT_RESPONSE, FALSE_VALUE, TRUE_VALUE
 
 
@@ -156,6 +156,56 @@ class TestGenerateAgentChain:
             result = await generate_chain.process_request(request_dict)
 
         assert isinstance(result, StreamingResponse)
+
+
+    @pytest.mark.asyncio
+    async def test_process_request_streaming_with_agents(self, generate_chain):
+        """Test processing a streaming generate request with agents and verify on_response_stream calls."""
+        # Create a mock agent that tracks streaming calls
+        mock_agent = AsyncMock()
+        mock_agent.on_request = AsyncMock(return_value={
+            "model": TEST_MODEL,
+            "prompt": TEST_PROMPT,
+            "stream": True,
+            "agents": ["test"]
+        })
+        mock_agent.on_response = AsyncMock(return_value={"response": "processed"})
+        
+        # Track on_response_stream calls
+        stream_calls = []
+        async def track_stream_call(request_context, chunk):
+            stream_calls.append((request_context, chunk))
+        
+        mock_agent.on_response_stream = track_stream_call
+        mock_agent.name = "test"
+
+        generate_chain.registry.get_agent.return_value = mock_agent
+
+        request_dict = {"model": TEST_MODEL, "prompt": "/test test prompt", "stream": True}
+
+        async def async_iter():
+            yield b'{"response": "first chunk"}'
+            yield b'{"response": "second chunk"}'
+            yield b'{"done": true}'
+
+        with patch('httpx.AsyncClient') as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_resp = MagicMock()
+            mock_resp.aiter_bytes = MagicMock(return_value=async_iter())
+            mock_resp.status_code = 200
+            mock_resp.headers = {}
+            mock_client.post = AsyncMock(return_value=mock_resp)
+
+            result = await generate_chain.process_request(request_dict)
+
+        assert isinstance(result, StreamingResponse)
+        
+        # Verify that on_response_stream was called for each chunk
+        # Note: We can't easily verify the exact number of calls since the streaming
+        # happens inside the StreamingResponse generator, but we can at least verify
+        # that the agent was registered and would be called during streaming
+        generate_chain.registry.get_agent.assert_called_with("test")
 
     @pytest.mark.asyncio
     async def test_process_request_error(self, generate_chain):

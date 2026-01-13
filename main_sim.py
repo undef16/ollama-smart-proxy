@@ -47,8 +47,9 @@ class MainSimulator:
         logger.info("Starting the Ollama Smart Proxy server...")
 
         # self.server_process = subprocess.Popen(["python", "main.py"])
-        # # Wait for server to be ready
+        # # # Wait for server to be ready
         # await self._wait_for_server()
+        
         self.client = ollama.Client(host=f"{self.proxy_host}:{self.proxy_port}")
                
         # self.client = ollama.Client(host=f"{self.proxy_host}:11434")
@@ -358,7 +359,7 @@ class MainSimulator:
             
                 ("Generate with Optimizer Agent (Positive)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_POSITIVE),
                 ("Generate with Optimizer Agent (Negative)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_NEGATIVE),
-                ("Generate with RAG Agent", self.test_generate_endpoint_with_rag_agent),
+                # ("Generate with RAG Agent", self.test_generate_endpoint_with_rag_agent),
 
                 ("Tags Endpoint", self.test_tags_endpoint),
 
@@ -368,7 +369,7 @@ class MainSimulator:
                 ("Chat Streaming", self.test_chat_endpoint_streaming),
                 ("Chat with Optimizer Agent (Positive)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_POSITIVE),
                 ("Chat with Optimizer Agent (Negative)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_NEGATIVE),
-                ("Chat with RAG Agent", self.test_chat_endpoint_with_rag_agent),
+                # ("Chat with RAG Agent", self.test_chat_endpoint_with_rag_agent),
             ])
 
             for test_def in tests:

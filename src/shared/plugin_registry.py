@@ -3,6 +3,8 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional
 
+from shared.logging import LoggingManager
+
 from .base_agent import BaseAgent
 from .config import Config
 from src.const import PLUGINS_DIR_NAME, AGENT_FILE_NAME, INIT_FILE_NAME
@@ -19,6 +21,7 @@ class PluginRegistry:
         return cls._instance
 
     def __init__(self):
+        self.logger = LoggingManager.get_logger(__name__)
         if not hasattr(self, '_initialized'):
             self._initialized = True
             self._agents: Dict[str, BaseAgent] = {}
@@ -74,8 +77,8 @@ class PluginRegistry:
             try:
                 agent_instance = agent_class()
                 self._agents[agent_instance.name] = agent_instance
-            except Exception:
-                # Log error, but continue loading others
+            except Exception as e:
+                self.logger.error(f"Fail load agent {e}", stack_info=True)
                 pass
 
     def get_agent(self, name: str) -> Optional[BaseAgent]:
