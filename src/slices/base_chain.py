@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from shared.config import Config
 from shared.logging import LoggingManager
-from src.const import RESPONSE_FIELD, MODEL_FIELD, STREAM_FIELD, AGENTS_FIELD
+from src.const import RESPONSE_FIELD, MODEL_FIELD, STREAM_FIELD, AGENTS_FIELD, OLLAMA_REQUEST_TIMEOUT
 
 
 class BaseChain(ABC):
@@ -183,7 +183,16 @@ class BaseChain(ABC):
             self.logger.debug(f"Forwarding request to Ollama for model: {context.get(MODEL_FIELD)}")
             url = f"{self.config.ollama_host}:{self.config.ollama_port}{self.get_ollama_endpoint()}"
             request_dict = self.build_ollama_request(context)
-            async with httpx.AsyncClient() as client:
+            
+            # Create httpx client with timeout configuration
+            timeout = httpx.Timeout(
+                connect=OLLAMA_REQUEST_TIMEOUT,
+                read=OLLAMA_REQUEST_TIMEOUT,
+                write=OLLAMA_REQUEST_TIMEOUT,
+                pool=OLLAMA_REQUEST_TIMEOUT
+            )
+            
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(url, json=request_dict)
 
             if context.get(STREAM_FIELD, False):
@@ -207,6 +216,18 @@ class BaseChain(ABC):
 
                 self.logger.info(f"Request processed successfully for model: {context.get(MODEL_FIELD)}")
                 return response_context[self.get_final_key()]
+        except httpx.ConnectError as e:
+            self.logger.error(f"Failed to connect to Ollama: {str(e)}", stack_info=True)
+            raise Exception(f"Failed to connect to Ollama: {str(e)}")
+        except httpx.ReadTimeout as e:
+            self.logger.error(f"Read timeout when connecting to Ollama: {str(e)}", stack_info=True)
+            raise Exception(f"Request to Ollama timed out: {str(e)}")
+        except httpx.WriteTimeout as e:
+            self.logger.error(f"Write timeout when connecting to Ollama: {str(e)}", stack_info=True)
+            raise Exception(f"Request to Ollama timed out: {str(e)}")
+        except httpx.TimeoutException as e:
+            self.logger.error(f"General timeout when connecting to Ollama: {str(e)}", stack_info=True)
+            raise Exception(f"Request to Ollama timed out: {str(e)}")
         except Exception as e:
             self.logger.error(f"Error processing request: {str(e)}", stack_info=True)
             raise

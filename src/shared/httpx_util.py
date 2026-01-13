@@ -8,7 +8,7 @@ import json
 import asyncio
 from .config import Config
 from .logging import LoggingManager
-from src.const import HTTP_BAD_REQUEST, HTTP_ERROR, CONTENT_TYPE_HEADER, CONTENT_TYPE_JSON
+from src.const import HTTP_BAD_REQUEST, HTTP_ERROR, CONTENT_TYPE_HEADER, CONTENT_TYPE_JSON, OLLAMA_REQUEST_TIMEOUT
 
 
 class HTTPX_Util:
@@ -31,6 +31,22 @@ class HTTPX_Util:
             else:
                 return HTTPX_Util._handle_regular_request(request.method, url, headers, body)
 
+        except httpx.ConnectError as e:
+            logger = LoggingManager.get_logger(__name__)
+            logger.error(f"Failed to connect to Ollama in passthrough: {str(e)}", stack_info=True)
+            raise HTTPException(status_code=HTTP_ERROR, detail=f"Failed to connect to Ollama: {str(e)}")
+        except httpx.ReadTimeout as e:
+            logger = LoggingManager.get_logger(__name__)
+            logger.error(f"Read timeout in passthrough: {str(e)}", stack_info=True)
+            raise HTTPException(status_code=HTTP_ERROR, detail=f"Passthrough request timed out: {str(e)}")
+        except httpx.WriteTimeout as e:
+            logger = LoggingManager.get_logger(__name__)
+            logger.error(f"Write timeout in passthrough: {str(e)}", stack_info=True)
+            raise HTTPException(status_code=HTTP_ERROR, detail=f"Passthrough request timed out: {str(e)}")
+        except httpx.TimeoutException as e:
+            logger = LoggingManager.get_logger(__name__)
+            logger.error(f"General timeout in passthrough: {str(e)}", stack_info=True)
+            raise HTTPException(status_code=HTTP_ERROR, detail=f"Passthrough request timed out: {str(e)}")
         except Exception as e:
             logger = LoggingManager.get_logger(__name__)
             logger.error(f"Error in generic passthrough: {str(e)}", stack_info=True)
@@ -65,7 +81,14 @@ class HTTPX_Util:
     def _handle_streaming_request(method: str, url: str, headers: dict, body) -> StreamingResponse:
         """Handle streaming requests."""
         def stream_response():
-            with httpx.stream(method, url, headers=headers, json=body if isinstance(body, dict) else None, content=body if not isinstance(body, dict) else None) as response:
+            # Create httpx client with timeout configuration for streaming
+            timeout = httpx.Timeout(
+                connect=OLLAMA_REQUEST_TIMEOUT,
+                read=OLLAMA_REQUEST_TIMEOUT,
+                write=OLLAMA_REQUEST_TIMEOUT,
+                pool=OLLAMA_REQUEST_TIMEOUT
+            )
+            with httpx.stream(method, url, headers=headers, json=body if isinstance(body, dict) else None, content=body if not isinstance(body, dict) else None, timeout=timeout) as response:
                 for chunk in response.iter_bytes():
                     yield chunk
 
@@ -79,7 +102,14 @@ class HTTPX_Util:
     @staticmethod
     def _handle_regular_request(method: str, url: str, headers: dict, body) -> Response:
         """Handle regular (non-streaming) requests."""
-        with httpx.Client() as client:
+        # Create httpx client with timeout configuration
+        timeout = httpx.Timeout(
+            connect=OLLAMA_REQUEST_TIMEOUT,
+            read=OLLAMA_REQUEST_TIMEOUT,
+            write=OLLAMA_REQUEST_TIMEOUT,
+            pool=OLLAMA_REQUEST_TIMEOUT
+        )
+        with httpx.Client(timeout=timeout) as client:
             if isinstance(body, dict):
                 response = client.request(method, url, headers=headers, json=body)
             else:

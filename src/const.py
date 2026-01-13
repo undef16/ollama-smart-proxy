@@ -107,6 +107,7 @@ TEST_MODELS_LIST = ["qwen3:8b", "gemma3:4b"]
 PROXY_HOST_URL = "http://localhost"
 SERVER_START_TIMEOUT_SEC = 60
 HTTP_TIMEOUT_SEC = 30
+OLLAMA_REQUEST_TIMEOUT = 300  # Increased timeout for Ollama requests
 MAX_RETRY_ATTEMPTS = 3
 EXAMPLE_AGENT_SUFFIX_STR = " [processed by example agent]"
 
