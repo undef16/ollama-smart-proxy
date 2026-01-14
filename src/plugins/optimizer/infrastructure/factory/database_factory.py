@@ -25,18 +25,21 @@ class DatabaseFactory:
         postgres_connection_string: Optional[str] = None
     ) -> TemplateRepository:
         """Create and return the appropriate repository adapter.
-        
+
         Args:
             database_type: Type of database ("sqlite" or "postgres")
             database_path: Path to SQLite database file
             postgres_connection_string: PostgreSQL connection string
-            
+
         Returns:
             TemplateRepository implementation instance
-            
+
         Raises:
             ValueError: If database type is unsupported or config is invalid
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         if database_type == DatabaseType.SQLITE.value:
             if database_path is None:
                 # Use default path in plugin directory
@@ -44,15 +47,18 @@ class DatabaseFactory:
                 data_dir = plugin_dir / "data"
                 data_dir.mkdir(exist_ok=True)
                 database_path = data_dir / "optimizer_stats.db"
+                logger.info(f"Using default SQLite path: {database_path}")
+            logger.info(f"Creating SQLiteTemplateRepository with path: {database_path}")
             return SQLiteTemplateRepository(db_path=database_path)
-        
+
         elif database_type == DatabaseType.POSTGRES.value:
             if postgres_connection_string is None:
                 raise ValueError(
                     "postgres_connection_string is required for PostgreSQL database type"
                 )
+            logger.info(f"Creating PostgreSQLTemplateRepository with connection string: {postgres_connection_string.replace(postgres_connection_string.split('@')[0].split(':')[-1] if '@' in postgres_connection_string else '', '***')}")
             return PostgreSQLTemplateRepository(connection_string=postgres_connection_string)
-        
+
         else:
             supported_types = ", ".join(dt.value for dt in DatabaseType)
             raise ValueError(
@@ -67,27 +73,36 @@ class DatabaseFactory:
         postgres_connection_string: Optional[str] = None
     ) -> TemplateRepository:
         """Create repository from configuration settings.
-        
+
         Args:
             database_type: Type of database ("sqlite" or "postgres")
             database_path: Path to SQLite database file (can be Path or str)
             postgres_connection_string: PostgreSQL connection string
-            
+
         Returns:
             TemplateRepository implementation instance
-            
+
         Raises:
             ValueError: If database type is unsupported or config is invalid
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.info(f"DatabaseFactory.create_from_config called with type: {database_type}")
+
         # Convert string path to Path if needed
         if database_path is not None and isinstance(database_path, str):
             database_path = Path(database_path)
-        
-        return DatabaseFactory.create_repository(
+            logger.info(f"Converted database_path to Path: {database_path}")
+
+        logger.info("Calling DatabaseFactory.create_repository")
+        repo = DatabaseFactory.create_repository(
             database_type=database_type,
             database_path=database_path,
             postgres_connection_string=postgres_connection_string
         )
+        logger.info(f"Repository created successfully: {type(repo).__name__}")
+        return repo
     
     @staticmethod
     def get_supported_types() -> List[str]:

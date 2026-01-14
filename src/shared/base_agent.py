@@ -38,3 +38,4 @@ class BaseAgent(ABC):
             Modified response dictionary.
         """
         pass
+

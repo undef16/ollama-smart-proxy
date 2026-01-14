@@ -47,8 +47,9 @@ class MainSimulator:
         logger.info("Starting the Ollama Smart Proxy server...")
 
         # self.server_process = subprocess.Popen(["python", "main.py"])
-        # # Wait for server to be ready
+        # # # Wait for server to be ready
         # await self._wait_for_server()
+        
         self.client = ollama.Client(host=f"{self.proxy_host}:{self.proxy_port}")
                
         # self.client = ollama.Client(host=f"{self.proxy_host}:11434")

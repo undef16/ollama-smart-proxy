@@ -65,7 +65,13 @@ class TestChatSlice:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.headers = {}
-        mock_resp.aiter_bytes.return_value = iter([b"data"])
+        
+        async def mock_aiter_bytes():
+            yield b'data: {"model":"qwen2.5-coder:1.5b","created_at":"2023-12-01T00:00.000Z","message":{"role":"assistant","content":"Hello"},"done":false}\n\n'
+            yield b'data: {"model":"qwen2.5-coder:1.5b","created_at":"2023-12-01T00:00.000Z","message":{"role":"assistant","content":" World"},"done":false}\n\n'
+            yield b'data: {"model":"qwen2.5-coder:1.5b","created_at":"2023-12-01T00:00:00.000Z","message":{"role":"assistant","content":"!","done":true}\n\n'
+        
+        mock_resp.aiter_bytes = MagicMock(return_value=mock_aiter_bytes())
         mock_client.post = AsyncMock(return_value=mock_resp)
 
         request_data = {

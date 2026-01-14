@@ -2,10 +2,6 @@
   "ollama_host": "http://localhost",
   "ollama_port": 11434,
 
-  "database_type": "sqlite",
-  "database_path": "./src/plugins/optimizer/data/optimizer_stats.db",
-  "postgres_connection_string": "postgresql://root:pass@192.168.1.138:5432/optimizer",
-
   "plugins_dir": "src/plugins",
   "model_cache_ttl": 300,
   "agent_command_pattern": "^\\s*/(\\w+)\\s*",

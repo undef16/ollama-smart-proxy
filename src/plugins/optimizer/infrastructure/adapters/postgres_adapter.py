@@ -2,9 +2,11 @@
 
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from urllib.parse import urlparse, urlunparse
 
 from sqlalchemy import create_engine, text, event
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
 
 from ...ports.template_repository import TemplateRepository
 from ...domain.template import Template
@@ -23,26 +25,129 @@ class PostgreSQLTemplateRepository(BaseTemplateRepository):
     
     def __init__(self, connection_string: str, pool_size: int = 5, max_overflow: int = 10):
         """Initialize PostgreSQL template repository.
-        
+
         Args:
             connection_string: PostgreSQL connection URI (postgresql://user:pass@host:port/db)
             pool_size: Number of connections to maintain in the pool
             max_overflow: Additional connections allowed beyond pool_size
         """
         self.connection_string = connection_string
+        self._ensure_database_exists()
         self._engine = create_engine(
             connection_string,
             pool_size=pool_size,
             max_overflow=max_overflow,
             pool_pre_ping=True,  # Enable connection health checks
         )
-        self._ensure_pg_trgm_extension()
+        # Only try to enable extensions if we can connect to the database
+        try:
+            self._ensure_pg_trgm_extension()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Could not enable pg_trgm extension (may not be needed): {e}")
         Base.metadata.create_all(self._engine)
     
     # =========================================================================
     # Database-specific setup methods
     # =========================================================================
-    
+
+    def _ensure_database_exists(self):
+        """Ensure the target database exists, creating it if necessary."""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            # Parse the connection string
+            parsed = urlparse(self.connection_string)
+            db_name = parsed.path.lstrip('/')
+
+            logger.info(f"Checking database existence for: {db_name}")
+
+            if not db_name:
+                raise ValueError("Database name not found in connection string")
+
+            # Create connection string for the admin database using the rag_db from docker-compose
+            # We need to reconstruct the connection string manually to use the admin database
+            admin_connection_string = f"postgresql://{parsed.username}:{parsed.password}@{parsed.hostname}:{parsed.port}/postgres"
+
+            logger.debug(f"Admin connection string: {admin_connection_string.replace(parsed.password or '', '***')}")
+
+            # Try to connect to the target database first
+            try:
+                logger.info(f"Attempting to connect to target database: {db_name}")
+                test_engine = create_engine(self.connection_string)
+                with test_engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))  # Simple query to test connection
+                test_engine.dispose()
+                logger.info(f"Database {db_name} already exists and is accessible")
+                return  # Database exists and is accessible
+            except OperationalError as e:
+                # Check if the error is specifically about the database not existing
+                error_msg = str(e).lower()
+                if "does not exist" in error_msg:
+                    logger.info(f"Database {db_name} does not exist (OperationalError: {e}), will attempt to create it")
+                else:
+                    logger.info(f"Database {db_name} may exist but has connection issues (OperationalError: {e}), will attempt to create it anyway")
+
+            # Connect to admin database and create the target database
+            logger.info(f"Connecting to admin database to create {db_name}")
+            admin_engine = create_engine(admin_connection_string)
+            # Use raw connection with autocommit to avoid transaction block issues
+            with admin_engine.connect() as conn:
+                # Get the raw connection to set isolation level
+                raw_conn = conn.connection.driver_connection
+                if raw_conn is not None:
+                    old_isolation_level = raw_conn.isolation_level
+                    raw_conn.set_isolation_level(0)  # 0 = AUTOCOMMIT
+                    try:
+                        # Use text() to safely execute the CREATE DATABASE statement
+                        logger.info(f"Executing: CREATE DATABASE {db_name}")
+                        # Check if database exists first to avoid error
+                        result = conn.execute(text(f"SELECT 1 FROM pg_database WHERE datname = :db_name"), {"db_name": db_name})
+                        if not result.fetchone():
+                            conn.execute(text(f"CREATE DATABASE {db_name}"))
+                            logger.info(f"Successfully created database: {db_name}")
+                        else:
+                            logger.info(f"Database {db_name} already exists in pg_database")
+                    finally:
+                        raw_conn.set_isolation_level(old_isolation_level)
+                else:
+                    # Fallback to simple approach if raw connection is not available
+                    logger.warning("Could not access raw connection, using fallback approach")
+                    result = conn.execute(text(f"SELECT 1 FROM pg_database WHERE datname = :db_name"), {"db_name": db_name})
+                    if not result.fetchone():
+                        try:
+                            conn.execute(text(f"CREATE DATABASE {db_name}"))
+                            conn.commit()
+                            logger.info(f"Successfully created database: {db_name}")
+                        except Exception as e:
+                            logger.error(f"Failed to create database using fallback: {e}")
+                            raise
+                    else:
+                        logger.info(f"Database {db_name} already exists in pg_database")
+            admin_engine.dispose()
+
+            # Small delay to ensure database is ready
+            import time
+            time.sleep(1)
+            
+            # Verify the database can now be accessed
+            try:
+                logger.info(f"Verifying database {db_name} can be accessed...")
+                verify_engine = create_engine(self.connection_string)
+                with verify_engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                verify_engine.dispose()
+                logger.info(f"Verified database {db_name} is accessible")
+            except Exception as verify_error:
+                logger.error(f"Failed to verify database {db_name} after creation: {verify_error}")
+
+        except Exception as e:
+            # Log the error but don't fail - the database might already exist or creation might not be allowed
+            logger = logging.getLogger(__name__)
+            logger.error(f"Could not ensure database exists: {e}", exc_info=True)
+
     def _ensure_pg_trgm_extension(self):
         """Ensure pg_trgm extension is enabled."""
         with self._engine.connect() as conn:
@@ -120,11 +225,11 @@ class PostgreSQLTemplateRepository(BaseTemplateRepository):
                 template_hash=template_hash,
                 working_window=working_window,
                 optimal_batch_size=optimal_batch_size if optimal_batch_size is not None else 32,
-                fingerprint_64=hex(fingerprints.get(64))[2:] if fingerprints.get(64) is not None else None,
-                fingerprint_128=hex(fingerprints.get(128))[2:] if fingerprints.get(128) is not None else None,
-                fingerprint_256=hex(fingerprints.get(256))[2:] if fingerprints.get(256) is not None else None,
-                fingerprint_512=hex(fingerprints.get(512))[2:] if fingerprints.get(512) is not None else None,
-                fingerprint_1024=hex(fingerprints.get(1024))[2:] if fingerprints.get(1024) is not None else None,
+                fingerprint_64=hex(fingerprints[64])[2:] if 64 in fingerprints and fingerprints[64] is not None else None,
+                fingerprint_128=hex(fingerprints[128])[2:] if 128 in fingerprints and fingerprints[128] is not None else None,
+                fingerprint_256=hex(fingerprints[256])[2:] if 256 in fingerprints and fingerprints[256] is not None else None,
+                fingerprint_512=hex(fingerprints[512])[2:] if 512 in fingerprints and fingerprints[512] is not None else None,
+                fingerprint_1024=hex(fingerprints[1024])[2:] if 1024 in fingerprints and fingerprints[1024] is not None else None,
             )
             session.add(template)
             session.commit()

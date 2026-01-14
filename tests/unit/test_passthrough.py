@@ -38,7 +38,7 @@ class TestPassthroughRouter:
             mock_request = MagicMock()
             mock_request.method = 'POST'
             mock_request.headers = {'content-type': 'application/json', 'authorization': 'Bearer token'}
-            mock_request.body = mock_body
+            mock_request.body = mock_body()
 
             router = PassthroughRouter()
             result = router.generic_passthrough(mock_request, "chat")
@@ -50,6 +50,5 @@ class TestPassthroughRouter:
                 'POST',
                 'http://localhost:11434/api/chat',
                 headers={'content-type': 'application/json', 'authorization': 'Bearer token'},
-                json=None,
                 content=b''
             )

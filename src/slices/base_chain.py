@@ -1,5 +1,6 @@
 """Base class for agent chains in the Ollama Smart Proxy."""
 
+import json
 import re
 import httpx
 from abc import ABC, abstractmethod
@@ -153,6 +154,76 @@ class BaseChain(ABC):
         """Get the key for the final response in response_context."""
         pass
 
+    async def _create_streaming_generator(
+        self, response, agents_to_execute: List[str], context: Dict[str, Any]
+    ):
+        """Create an async generator for streaming response with agent processing.
+
+        Args:
+            response: The httpx response object.
+            agents_to_execute: List of agent names to execute.
+            context: Request context dictionary.
+
+        Yields:
+            Bytes from the original response stream.
+        """
+        
+        collected_chunks = []
+        
+        # First process and yield the chunks
+        async for byte_chunk in response.aiter_bytes():
+            # Yield original bytes to client immediately
+            yield byte_chunk
+            
+            try:
+                # Parse the byte chunk into JSON for agent processing
+                chunk_str = byte_chunk.decode('utf-8')
+                chunk_data = json.loads(chunk_str)
+                collected_chunks.append(chunk_data)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass  # Skip malformed chunks
+        
+        # After streaming completes, aggregate chunks for post-processing
+        if collected_chunks:
+            # Create aggregated response for post-processing
+            response_data = self._aggregate_stream_chunks(collected_chunks)
+            response_context = self.create_response_context(response_data, agents_to_execute)
+            
+            # Execute agent chain on the complete response
+            try:
+                await self._execute_agent_chain_on_response(
+                    agents_to_execute, context, response_context
+                )
+            except Exception as e:
+                self.logger.error(f"Error in post-processing agent chain: {str(e)}", stack_info=True)
+
+    def _aggregate_stream_chunks(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Aggregate stream chunks into a complete response.
+
+        Args:
+            chunks: List of individual stream chunks.
+
+        Returns:
+            Aggregated response dictionary.
+        """
+        if not chunks:
+            return {}
+            
+        # Determine if this is a generate or chat response
+        first_chunk = chunks[0]
+        
+        if "response" in first_chunk:
+            # Generate response format
+            full_response = "".join(chunk.get("response", "") for chunk in chunks)
+            return {"response": full_response, "done": True}
+        elif "message" in first_chunk:
+            # Chat response format
+            full_content = "".join(chunk.get("message", {}).get("content", "") for chunk in chunks)
+            return {"message": {"content": full_content}, "done": True}
+        else:
+            # Fallback - return last chunk
+            return chunks[-1] if chunks else {}
+
     async def process_request(self, request: Dict[str, Any]) -> Any:
         """Process a request and forward to Ollama.
 
@@ -198,7 +269,7 @@ class BaseChain(ABC):
             if context.get(STREAM_FIELD, False):
                 self.logger.info(f"Request processed successfully for model: {context.get(MODEL_FIELD)} (streaming)")
                 return StreamingResponse(
-                    response.aiter_bytes(),
+                    self._create_streaming_generator(response, agents_to_execute, context),
                     status_code=response.status_code,
                     headers=response.headers
                 )
