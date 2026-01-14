@@ -1,7 +1,11 @@
 {
   "database_type": "postgres",
   "database_path": "./src/plugins/optimizer/data/optimizer_stats.db",
-  "postgres_connection_string": "postgresql://ollama_proxy:pass@postgres:5432/optimizer",
+  "postgres_host": "postgres",
+  "postgres_port": 5432,
+  "postgres_user": "ollama_proxy",
+  "postgres_password": "pass",
+  "postgres_db": "optimizer",
   "safety_margin": 1.2,
   "template_cache_max_size": 512,
   "template_cache_ttl": 1800,

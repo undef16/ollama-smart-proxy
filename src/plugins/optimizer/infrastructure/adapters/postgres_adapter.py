@@ -39,7 +39,13 @@ class PostgreSQLTemplateRepository(BaseTemplateRepository):
             max_overflow=max_overflow,
             pool_pre_ping=True,  # Enable connection health checks
         )
-        self._ensure_pg_trgm_extension()
+        # Only try to enable extensions if we can connect to the database
+        try:
+            self._ensure_pg_trgm_extension()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Could not enable pg_trgm extension (may not be needed): {e}")
         Base.metadata.create_all(self._engine)
     
     # =========================================================================
@@ -61,9 +67,9 @@ class PostgreSQLTemplateRepository(BaseTemplateRepository):
             if not db_name:
                 raise ValueError("Database name not found in connection string")
 
-            # Create connection string for the admin database (postgres)
-            admin_url = parsed._replace(path='/postgres')
-            admin_connection_string = urlunparse(admin_url)
+            # Create connection string for the admin database using the rag_db from docker-compose
+            # We need to reconstruct the connection string manually to use the admin database
+            admin_connection_string = f"postgresql://{parsed.username}:{parsed.password}@{parsed.hostname}:{parsed.port}/postgres"
 
             logger.debug(f"Admin connection string: {admin_connection_string.replace(parsed.password or '', '***')}")
 
@@ -71,22 +77,71 @@ class PostgreSQLTemplateRepository(BaseTemplateRepository):
             try:
                 logger.info(f"Attempting to connect to target database: {db_name}")
                 test_engine = create_engine(self.connection_string)
+                with test_engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))  # Simple query to test connection
                 test_engine.dispose()
-                logger.info(f"Database {db_name} already exists")
-                return  # Database exists
+                logger.info(f"Database {db_name} already exists and is accessible")
+                return  # Database exists and is accessible
             except OperationalError as e:
-                logger.info(f"Database {db_name} does not exist (OperationalError: {e}), will attempt to create it")
+                # Check if the error is specifically about the database not existing
+                error_msg = str(e).lower()
+                if "does not exist" in error_msg:
+                    logger.info(f"Database {db_name} does not exist (OperationalError: {e}), will attempt to create it")
+                else:
+                    logger.info(f"Database {db_name} may exist but has connection issues (OperationalError: {e}), will attempt to create it anyway")
 
             # Connect to admin database and create the target database
             logger.info(f"Connecting to admin database to create {db_name}")
             admin_engine = create_engine(admin_connection_string)
+            # Use raw connection with autocommit to avoid transaction block issues
             with admin_engine.connect() as conn:
-                # Use text() to safely execute the CREATE DATABASE statement
-                logger.info(f"Executing: CREATE DATABASE {db_name}")
-                conn.execute(text(f"CREATE DATABASE {db_name}"))
-                conn.commit()
-                logger.info(f"Successfully created database: {db_name}")
+                # Get the raw connection to set isolation level
+                raw_conn = conn.connection.driver_connection
+                if raw_conn is not None:
+                    old_isolation_level = raw_conn.isolation_level
+                    raw_conn.set_isolation_level(0)  # 0 = AUTOCOMMIT
+                    try:
+                        # Use text() to safely execute the CREATE DATABASE statement
+                        logger.info(f"Executing: CREATE DATABASE {db_name}")
+                        # Check if database exists first to avoid error
+                        result = conn.execute(text(f"SELECT 1 FROM pg_database WHERE datname = :db_name"), {"db_name": db_name})
+                        if not result.fetchone():
+                            conn.execute(text(f"CREATE DATABASE {db_name}"))
+                            logger.info(f"Successfully created database: {db_name}")
+                        else:
+                            logger.info(f"Database {db_name} already exists in pg_database")
+                    finally:
+                        raw_conn.set_isolation_level(old_isolation_level)
+                else:
+                    # Fallback to simple approach if raw connection is not available
+                    logger.warning("Could not access raw connection, using fallback approach")
+                    result = conn.execute(text(f"SELECT 1 FROM pg_database WHERE datname = :db_name"), {"db_name": db_name})
+                    if not result.fetchone():
+                        try:
+                            conn.execute(text(f"CREATE DATABASE {db_name}"))
+                            conn.commit()
+                            logger.info(f"Successfully created database: {db_name}")
+                        except Exception as e:
+                            logger.error(f"Failed to create database using fallback: {e}")
+                            raise
+                    else:
+                        logger.info(f"Database {db_name} already exists in pg_database")
             admin_engine.dispose()
+
+            # Small delay to ensure database is ready
+            import time
+            time.sleep(1)
+            
+            # Verify the database can now be accessed
+            try:
+                logger.info(f"Verifying database {db_name} can be accessed...")
+                verify_engine = create_engine(self.connection_string)
+                with verify_engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                verify_engine.dispose()
+                logger.info(f"Verified database {db_name} is accessible")
+            except Exception as verify_error:
+                logger.error(f"Failed to verify database {db_name} after creation: {verify_error}")
 
         except Exception as e:
             # Log the error but don't fail - the database might already exist or creation might not be allowed

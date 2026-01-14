@@ -18,7 +18,11 @@ class OptimizerConfig(BaseModel):
     """Configuration model for Optimizer plugin settings."""
     database_type: str = Field(default="sqlite", description="Database type (sqlite or postgres)")
     database_path: str = Field(default="./src/plugins/optimizer/data/optimizer_stats.db", description="SQLite database path")
-    postgres_connection_string: str = Field(default="postgresql://ollama_proxy:pass@postgres:5432/optimizer", description="PostgreSQL connection string")
+    postgres_host: str = Field(default="localhost", description="PostgreSQL host")
+    postgres_port: int = Field(default=5432, description="PostgreSQL port")
+    postgres_user: str = Field(default="ollama_proxy", description="PostgreSQL user")
+    postgres_password: str = Field(default="pass", description="PostgreSQL password")
+    postgres_db: str = Field(default="optimizer", description="PostgreSQL database name")
     safety_margin: float = Field(default=1.2, ge=1.0, description="Safety margin for context window calculation")
     template_cache_max_size: int = Field(default=512, ge=1, description="Maximum size of template cache")
     template_cache_ttl: int = Field(default=1800, ge=1, description="TTL for template cache in seconds")
@@ -28,6 +32,11 @@ class OptimizerConfig(BaseModel):
     tokenizer_cache_ttl: int = Field(default=3600, ge=1, description="TTL for tokenizer cache in seconds")
     query_cache_max_size: int = Field(default=200, ge=1, description="Maximum size of query cache")
     query_cache_ttl: int = Field(default=1800, ge=1, description="TTL for query cache in seconds")
+
+    @property
+    def postgres_connection_string(self) -> str:
+        """Generate PostgreSQL connection string from individual components."""
+        return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
 
     @classmethod
     def from_env_and_json(cls, json_data: Dict) -> 'OptimizerConfig':
@@ -49,7 +58,11 @@ class OptimizerConfig(BaseModel):
         env_mappings = {
             'OPTIMIZER_DATABASE_TYPE': 'database_type',
             'OPTIMIZER_DATABASE_PATH': 'database_path',
-            'OPTIMIZER_POSTGRES_CONNECTION_STRING': 'postgres_connection_string',
+            'OPTIMIZER_POSTGRES_HOST': 'postgres_host',
+            'OPTIMIZER_POSTGRES_PORT': 'postgres_port',
+            'OPTIMIZER_POSTGRES_USER': 'postgres_user',
+            'OPTIMIZER_POSTGRES_PASSWORD': 'postgres_password',
+            'OPTIMIZER_POSTGRES_DB': 'postgres_db',
             'OPTIMIZER_SAFETY_MARGIN': 'safety_margin',
             'OPTIMIZER_TEMPLATE_CACHE_MAX_SIZE': 'template_cache_max_size',
             'OPTIMIZER_TEMPLATE_CACHE_TTL': 'template_cache_ttl',
@@ -72,7 +85,7 @@ class OptimizerConfig(BaseModel):
                         logger.warning(f"Invalid float value for {env_var}: {env_value}")
                 elif config_key in ['template_cache_max_size', 'template_cache_ttl', 'fingerprint_cache_max_size',
                                    'fingerprint_cache_ttl', 'tokenizer_cache_max_size', 'tokenizer_cache_ttl',
-                                   'query_cache_max_size', 'query_cache_ttl']:
+                                   'query_cache_max_size', 'query_cache_ttl', 'postgres_port']:
                     try:
                         config_data[config_key] = int(env_value)
                     except ValueError:
