@@ -7,15 +7,15 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from src.shared.base_agent import BaseAgent
-from src.shared.config import Config
 from src.shared.logging import LoggingManager
 
 from .infrastructure.factory.database_factory import DatabaseFactory
 from .infrastructure.utils.simhash_utils import TemplateMatcher
 from .infrastructure.cache.template_cache import TemplateCache
-from .const import AGENT_NAME, SAFETY_MARGIN
+from .const import AGENT_NAME
 from .infrastructure.utils.template_utils import TemplateUtils
 from .infrastructure.cache.cache_utils import CacheUtils
+from .infrastructure.config import ConfigurationManager
 
 
 @dataclass
@@ -36,28 +36,40 @@ class OptimizerAgent(BaseAgent):
         repository: Optional[Any] = None
     ):
         """Initialize the optimizer agent.
-        
+
         Args:
             repository: Optional TemplateRepository for dependency injection.
-                        If None, creates from Config using DatabaseFactory.
+                         If None, creates from config using DatabaseFactory.
         """
         self.logger = LoggingManager.get_logger(__name__)
+
+        # Load configuration
+        self.config = ConfigurationManager.get_config()
 
         # Use provided repository or create from config
         if repository is not None:
             self.repository = repository
         else:
-            config = Config()
             self.repository = DatabaseFactory.create_from_config(
-                database_type=config.database_type,
-                database_path=config.database_path,
-                postgres_connection_string=config.postgres_connection_string
+                database_type=self.config.database_type,
+                database_path=self.config.database_path,
+                postgres_connection_string=self.config.postgres_connection_string
             )
-        
+
         # Template matcher with caching
-        self.template_cache = TemplateCache(max_size=512, default_ttl=1800)
-        self.matcher = TemplateMatcher(self.repository, template_cache=self.template_cache)
-        
+        self.template_cache = TemplateCache(
+            max_size=self.config.template_cache_max_size,
+            default_ttl=self.config.template_cache_ttl
+        )
+        self.matcher = TemplateMatcher(
+            self.repository,
+            template_cache=self.template_cache,
+            tokenizer_cache_max_size=self.config.tokenizer_cache_max_size,
+            tokenizer_cache_ttl=self.config.tokenizer_cache_ttl,
+            fingerprint_cache_max_size=self.config.fingerprint_cache_max_size,
+            fingerprint_cache_ttl=self.config.fingerprint_cache_ttl
+        )
+
         self.logger.info("OptimizerAgent initialized")
 
     @property
@@ -123,7 +135,7 @@ class OptimizerAgent(BaseAgent):
 
             if self._is_valid_token_counts(prompt_eval_count, eval_count):
                 total_tokens = int(prompt_eval_count) + int(eval_count)  # type: ignore
-                working_window = int(total_tokens * SAFETY_MARGIN)
+                working_window = int(total_tokens * self.config.safety_margin)
 
                 # Check if we matched a template in on_request
                 optimizer_meta = request.get("_optimizer")

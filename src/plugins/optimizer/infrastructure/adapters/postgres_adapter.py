@@ -2,9 +2,11 @@
 
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from urllib.parse import urlparse, urlunparse
 
 from sqlalchemy import create_engine, text, event
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
 
 from ...ports.template_repository import TemplateRepository
 from ...domain.template import Template
@@ -23,13 +25,14 @@ class PostgreSQLTemplateRepository(BaseTemplateRepository):
     
     def __init__(self, connection_string: str, pool_size: int = 5, max_overflow: int = 10):
         """Initialize PostgreSQL template repository.
-        
+
         Args:
             connection_string: PostgreSQL connection URI (postgresql://user:pass@host:port/db)
             pool_size: Number of connections to maintain in the pool
             max_overflow: Additional connections allowed beyond pool_size
         """
         self.connection_string = connection_string
+        self._ensure_database_exists()
         self._engine = create_engine(
             connection_string,
             pool_size=pool_size,
@@ -42,7 +45,43 @@ class PostgreSQLTemplateRepository(BaseTemplateRepository):
     # =========================================================================
     # Database-specific setup methods
     # =========================================================================
-    
+
+    def _ensure_database_exists(self):
+        """Ensure the target database exists, creating it if necessary."""
+        try:
+            # Parse the connection string
+            parsed = urlparse(self.connection_string)
+            db_name = parsed.path.lstrip('/')
+
+            if not db_name:
+                raise ValueError("Database name not found in connection string")
+
+            # Create connection string for the admin database (postgres)
+            admin_url = parsed._replace(path='/postgres')
+            admin_connection_string = urlunparse(admin_url)
+
+            # Try to connect to the target database first
+            try:
+                test_engine = create_engine(self.connection_string)
+                test_engine.dispose()
+                return  # Database exists
+            except OperationalError:
+                pass  # Database doesn't exist, continue with creation
+
+            # Connect to admin database and create the target database
+            admin_engine = create_engine(admin_connection_string)
+            with admin_engine.connect() as conn:
+                # Use text() to safely execute the CREATE DATABASE statement
+                conn.execute(text(f"CREATE DATABASE {db_name}"))
+                conn.commit()
+            admin_engine.dispose()
+
+        except Exception as e:
+            # Log the error but don't fail - the database might already exist or creation might not be allowed
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Could not ensure database exists: {e}")
+
     def _ensure_pg_trgm_extension(self):
         """Ensure pg_trgm extension is enabled."""
         with self._engine.connect() as conn:
@@ -120,11 +159,11 @@ class PostgreSQLTemplateRepository(BaseTemplateRepository):
                 template_hash=template_hash,
                 working_window=working_window,
                 optimal_batch_size=optimal_batch_size if optimal_batch_size is not None else 32,
-                fingerprint_64=hex(fingerprints.get(64))[2:] if fingerprints.get(64) is not None else None,
-                fingerprint_128=hex(fingerprints.get(128))[2:] if fingerprints.get(128) is not None else None,
-                fingerprint_256=hex(fingerprints.get(256))[2:] if fingerprints.get(256) is not None else None,
-                fingerprint_512=hex(fingerprints.get(512))[2:] if fingerprints.get(512) is not None else None,
-                fingerprint_1024=hex(fingerprints.get(1024))[2:] if fingerprints.get(1024) is not None else None,
+                fingerprint_64=hex(fingerprints[64])[2:] if 64 in fingerprints and fingerprints[64] is not None else None,
+                fingerprint_128=hex(fingerprints[128])[2:] if 128 in fingerprints and fingerprints[128] is not None else None,
+                fingerprint_256=hex(fingerprints[256])[2:] if 256 in fingerprints and fingerprints[256] is not None else None,
+                fingerprint_512=hex(fingerprints[512])[2:] if 512 in fingerprints and fingerprints[512] is not None else None,
+                fingerprint_1024=hex(fingerprints[1024])[2:] if 1024 in fingerprints and fingerprints[1024] is not None else None,
             )
             session.add(template)
             session.commit()

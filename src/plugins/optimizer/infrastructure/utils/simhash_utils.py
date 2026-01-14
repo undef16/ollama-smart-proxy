@@ -432,7 +432,9 @@ class MultiResolutionSimHash:
 class TemplateMatcher:
     """High-level template matching with learning and caching."""
 
-    def __init__(self, repository: TemplateRepository, resolutions: Optional[List[int]] = None, template_cache: Optional['TemplateCache'] = None):
+    def __init__(self, repository: TemplateRepository, resolutions: Optional[List[int]] = None, template_cache: Optional['TemplateCache'] = None,
+                 tokenizer_cache_max_size: int = 500, tokenizer_cache_ttl: int = 3600,
+                 fingerprint_cache_max_size: int = 1000, fingerprint_cache_ttl: int = 3600):
         """Initialize with repository and caches."""
         self.repository = repository  # Changed from db_manager to repository
         self.template_cache = template_cache
@@ -440,8 +442,8 @@ class TemplateMatcher:
         # Initialize caches for SimHash
         from ..cache.tokenizer_cache import TokenizerCache
         from ..cache.fingerprint_cache import FingerprintCache
-        tokenizer_cache = TokenizerCache()
-        fingerprint_cache = FingerprintCache()
+        tokenizer_cache = TokenizerCache(max_size=tokenizer_cache_max_size, default_ttl=tokenizer_cache_ttl)
+        fingerprint_cache = FingerprintCache(max_size=fingerprint_cache_max_size, default_ttl=fingerprint_cache_ttl)
         complexity_analyzer = TextComplexityAnalyzer()
 
         self.simhash = MultiResolutionSimHash(resolutions, tokenizer_cache, fingerprint_cache, complexity_analyzer)

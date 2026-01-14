@@ -170,6 +170,7 @@ class BaseChain(ABC):
         
         collected_chunks = []
         
+        # First process and yield the chunks
         async for byte_chunk in response.aiter_bytes():
             # Yield original bytes to client immediately
             yield byte_chunk
@@ -189,9 +190,12 @@ class BaseChain(ABC):
             response_context = self.create_response_context(response_data, agents_to_execute)
             
             # Execute agent chain on the complete response
-            await self._execute_agent_chain_on_response(
-                agents_to_execute, context, response_context
-            )
+            try:
+                await self._execute_agent_chain_on_response(
+                    agents_to_execute, context, response_context
+                )
+            except Exception as e:
+                self.logger.error(f"Error in post-processing agent chain: {str(e)}", stack_info=True)
 
     def _aggregate_stream_chunks(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Aggregate stream chunks into a complete response.
@@ -202,6 +206,9 @@ class BaseChain(ABC):
         Returns:
             Aggregated response dictionary.
         """
+        if not chunks:
+            return {}
+            
         # Determine if this is a generate or chat response
         first_chunk = chunks[0]
         

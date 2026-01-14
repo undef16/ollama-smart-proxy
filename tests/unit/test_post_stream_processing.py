@@ -107,7 +107,7 @@ async def test_post_stream_processing_with_agents(mock_chain):
     """Test that post-stream processing executes agent on_response methods."""
     # Create mock agent that tracks post-processing
     mock_agent = MockAgent("test")
-    mock_chain.registry.register_agent("test", mock_agent)
+    mock_chain.registry.agents[mock_agent.name] = mock_agent
     
     # Create mock response with streaming data
     async def mock_byte_stream():
@@ -155,7 +155,7 @@ async def test_post_stream_processing_chat_format(mock_chain):
     """Test post-stream processing with chat format responses."""
     # Create mock agent
     mock_agent = MockAgent("test")
-    mock_chain.registry.register_agent("test", mock_agent)
+    mock_chain.registry.agents[mock_agent.name] = mock_agent
     
     # Create mock response with chat format
     async def mock_byte_stream():
@@ -196,8 +196,8 @@ async def test_post_stream_processing_multiple_agents(mock_chain):
     # Create multiple mock agents
     agent1 = MockAgent("agent1")
     agent2 = MockAgent("agent2")
-    mock_chain.registry.register_agent("agent1", agent1)
-    mock_chain.registry.register_agent("agent2", agent2)
+    mock_chain.registry.agents[agent1.name] = agent1
+    mock_chain.registry.agents[agent2.name] = agent2
     
     # Create mock response with streaming data
     async def mock_byte_stream():
@@ -245,7 +245,7 @@ async def test_post_stream_processing_error_handling(mock_chain):
     """Test that post-processing errors are handled gracefully."""
     # Create mock agent
     mock_agent = MockAgent("test")
-    mock_chain.registry.register_agent("test", mock_agent)
+    mock_chain.registry.agents[mock_agent.name] = mock_agent
     
     # Create mock response with streaming data
     async def mock_byte_stream():
@@ -313,7 +313,7 @@ async def test_execute_agent_chain_on_response_integration(mock_chain):
             pass
     
     modifying_agent = ModifyingAgent()
-    mock_chain.registry.register_agent("modifier", modifying_agent)
+    mock_chain.registry.agents[modifying_agent.name] = modifying_agent
     
     # Create mock response with streaming data
     async def mock_byte_stream():
@@ -382,7 +382,7 @@ async def test_post_stream_processing_preserves_original_stream(mock_chain):
         return response
     
     mock_agent.on_response = slow_on_response
-    mock_chain.registry.register_agent("test", mock_agent)
+    mock_chain.registry.agents[mock_agent.name] = mock_agent
     
     # Create mock response with streaming data
     async def mock_byte_stream():

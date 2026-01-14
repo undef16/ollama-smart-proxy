@@ -139,17 +139,9 @@ async def test_create_streaming_generator_processes_chunks(mock_chain):
     ]
     assert collected_bytes == expected_bytes
     
-    # Verify that agent on_response_stream was called for each chunk
-    assert len(mock_agent.on_response_stream_calls) == 4
-    expected_chunks = [
-        {"response": "Hello"},
-        {"response": " World"},
-        {"response": "!"},
-        {"done": True}
-    ]
-    for i, (req_context, chunk) in enumerate(mock_agent.on_response_stream_calls):
-        assert req_context == context
-        assert chunk == expected_chunks[i]
+    # Verify that agent on_response_stream was not called during streaming (only post-processing happens after stream)
+    # The agent.on_response_stream_calls should be 0 as on_response_stream is not called per chunk anymore
+    assert len(mock_agent.on_response_stream_calls) == 0
 
 
 @pytest.mark.asyncio
@@ -188,15 +180,9 @@ async def test_create_streaming_generator_handles_json_parse_error(mock_chain):
     ]
     assert collected_bytes == expected_bytes
     
-    # Verify that agent on_response_stream was called only for valid JSON chunks
-    assert len(mock_agent.on_response_stream_calls) == 2
-    expected_chunks = [
-        {"response": "valid"},
-        {"response": "after invalid"}
-    ]
-    for i, (req_context, chunk) in enumerate(mock_agent.on_response_stream_calls):
-        assert req_context == context
-        assert chunk == expected_chunks[i]
+    # Verify that agent on_response_stream was not called during streaming (only post-processing happens after stream)
+    # The agent.on_response_stream_calls should be 0 as on_response_stream is not called per chunk anymore
+    assert len(mock_agent.on_response_stream_calls) == 0
 
 
 @pytest.mark.asyncio
@@ -204,7 +190,7 @@ async def test_create_streaming_generator_aggregates_chunks_for_post_processing(
     """Test that _create_streaming_generator aggregates chunks for post-processing."""
     # Create mock agents
     mock_agent = MockAgent("test")
-    mock_chain.registry.register_agent("test", mock_agent)
+    mock_chain.registry.agents[mock_agent.name] = mock_agent
     
     # Create mock response with streaming data
     async def mock_byte_stream():
@@ -251,7 +237,7 @@ async def test_create_streaming_generator_handles_chat_format(mock_chain):
     """Test that _create_streaming_generator handles chat format responses."""
     # Create mock agents
     mock_agent = MockAgent("test")
-    mock_chain.registry.register_agent("test", mock_agent)
+    mock_chain.registry.agents[mock_agent.name] = mock_agent
     
     # Create mock response with chat format
     async def mock_byte_stream():
@@ -308,7 +294,7 @@ async def test_create_streaming_generator_agent_error_handling(mock_chain):
             raise Exception("Agent error")
     
     error_agent = ErrorAgent()
-    mock_chain.registry.register_agent("error", error_agent)
+    mock_chain.registry.agents[error_agent.name] = error_agent
     
     # Create mock response with streaming data
     async def mock_byte_stream():
@@ -395,7 +381,7 @@ async def test_process_request_with_streaming_calls_create_streaming_generator(m
     """Test that process_request with streaming=True calls _create_streaming_generator."""
     # Create mock agents
     mock_agent = MockAgent("test")
-    mock_chain.registry.register_agent("test", mock_agent)
+    mock_chain.registry.agents[mock_agent.name] = mock_agent
     
     # Mock the prepare_context to return streaming context
     original_prepare_context = mock_chain.prepare_context

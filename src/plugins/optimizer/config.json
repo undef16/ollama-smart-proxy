@@ -1,0 +1,14 @@
+{
+  "database_type": "sqlite",
+  "database_path": "./src/plugins/optimizer/data/optimizer_stats.db",
+  "postgres_connection_string": "postgresql://ollama_proxy:pass@postgres:5432/optimizer",
+  "safety_margin": 1.2,
+  "template_cache_max_size": 512,
+  "template_cache_ttl": 1800,
+  "fingerprint_cache_max_size": 1000,
+  "fingerprint_cache_ttl": 3600,
+  "tokenizer_cache_max_size": 500,
+  "tokenizer_cache_ttl": 3600,
+  "query_cache_max_size": 200,
+  "query_cache_ttl": 1800
+}

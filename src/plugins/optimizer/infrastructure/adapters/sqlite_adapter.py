@@ -27,12 +27,14 @@ class SQLiteTemplateRepository(BaseTemplateRepository):
     
     def __init__(self, db_path: Path, check_same_thread: bool = False):
         """Initialize SQLite template repository.
-        
+
         Args:
             db_path: Path to SQLite database file
             check_same_thread: For SQLite thread safety (default False)
         """
         self.db_path = db_path
+        # Ensure the directory exists
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         self._engine = create_engine(
             f"sqlite:///{db_path}",
             connect_args={"check_same_thread": check_same_thread}
@@ -148,11 +150,11 @@ class SQLiteTemplateRepository(BaseTemplateRepository):
                 template_hash=template_hash,
                 working_window=working_window,
                 optimal_batch_size=optimal_batch_size if optimal_batch_size is not None else 32,
-                fingerprint_64=hex(fingerprints.get(64))[2:] if fingerprints.get(64) is not None else None,
-                fingerprint_128=hex(fingerprints.get(128))[2:] if fingerprints.get(128) is not None else None,
-                fingerprint_256=hex(fingerprints.get(256))[2:] if fingerprints.get(256) is not None else None,
-                fingerprint_512=hex(fingerprints.get(512))[2:] if fingerprints.get(512) is not None else None,
-                fingerprint_1024=hex(fingerprints.get(1024))[2:] if fingerprints.get(1024) is not None else None,
+                fingerprint_64=hex(fingerprints[64])[2:] if 64 in fingerprints and fingerprints[64] is not None else None,
+                fingerprint_128=hex(fingerprints[128])[2:] if 128 in fingerprints and fingerprints[128] is not None else None,
+                fingerprint_256=hex(fingerprints[256])[2:] if 256 in fingerprints and fingerprints[256] is not None else None,
+                fingerprint_512=hex(fingerprints[512])[2:] if 512 in fingerprints and fingerprints[512] is not None else None,
+                fingerprint_1024=hex(fingerprints[1024])[2:] if 1024 in fingerprints and fingerprints[1024] is not None else None,
             )
             session.add(template)
             session.commit()

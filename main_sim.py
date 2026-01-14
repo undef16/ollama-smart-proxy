@@ -359,7 +359,7 @@ class MainSimulator:
             
                 ("Generate with Optimizer Agent (Positive)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_POSITIVE),
                 ("Generate with Optimizer Agent (Negative)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_NEGATIVE),
-                # ("Generate with RAG Agent", self.test_generate_endpoint_with_rag_agent),
+                ("Generate with RAG Agent", self.test_generate_endpoint_with_rag_agent),
 
                 ("Tags Endpoint", self.test_tags_endpoint),
 
@@ -369,7 +369,7 @@ class MainSimulator:
                 ("Chat Streaming", self.test_chat_endpoint_streaming),
                 ("Chat with Optimizer Agent (Positive)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_POSITIVE),
                 ("Chat with Optimizer Agent (Negative)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_NEGATIVE),
-                # ("Chat with RAG Agent", self.test_chat_endpoint_with_rag_agent),
+                ("Chat with RAG Agent", self.test_chat_endpoint_with_rag_agent),
             ])
 
             for test_def in tests:
