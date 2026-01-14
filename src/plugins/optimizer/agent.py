@@ -50,11 +50,18 @@ class OptimizerAgent(BaseAgent):
         if repository is not None:
             self.repository = repository
         else:
+            self.logger.info(f"Creating database repository with type: {self.config.database_type}")
+            if self.config.database_type == "sqlite":
+                self.logger.info(f"SQLite database path: {self.config.database_path}")
+            else:
+                self.logger.info(f"PostgreSQL connection string: {self.config.postgres_connection_string.replace(self.config.postgres_connection_string.split('@')[0].split(':')[-1] if '@' in self.config.postgres_connection_string else '', '***')}")
+
             self.repository = DatabaseFactory.create_from_config(
                 database_type=self.config.database_type,
                 database_path=self.config.database_path,
                 postgres_connection_string=self.config.postgres_connection_string
             )
+            self.logger.info("Database repository created successfully")
 
         # Template matcher with caching
         self.template_cache = TemplateCache(

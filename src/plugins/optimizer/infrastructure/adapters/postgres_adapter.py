@@ -48,10 +48,15 @@ class PostgreSQLTemplateRepository(BaseTemplateRepository):
 
     def _ensure_database_exists(self):
         """Ensure the target database exists, creating it if necessary."""
+        import logging
+        logger = logging.getLogger(__name__)
+
         try:
             # Parse the connection string
             parsed = urlparse(self.connection_string)
             db_name = parsed.path.lstrip('/')
+
+            logger.info(f"Checking database existence for: {db_name}")
 
             if not db_name:
                 raise ValueError("Database name not found in connection string")
@@ -60,27 +65,33 @@ class PostgreSQLTemplateRepository(BaseTemplateRepository):
             admin_url = parsed._replace(path='/postgres')
             admin_connection_string = urlunparse(admin_url)
 
+            logger.debug(f"Admin connection string: {admin_connection_string.replace(parsed.password or '', '***')}")
+
             # Try to connect to the target database first
             try:
+                logger.info(f"Attempting to connect to target database: {db_name}")
                 test_engine = create_engine(self.connection_string)
                 test_engine.dispose()
+                logger.info(f"Database {db_name} already exists")
                 return  # Database exists
-            except OperationalError:
-                pass  # Database doesn't exist, continue with creation
+            except OperationalError as e:
+                logger.info(f"Database {db_name} does not exist (OperationalError: {e}), will attempt to create it")
 
             # Connect to admin database and create the target database
+            logger.info(f"Connecting to admin database to create {db_name}")
             admin_engine = create_engine(admin_connection_string)
             with admin_engine.connect() as conn:
                 # Use text() to safely execute the CREATE DATABASE statement
+                logger.info(f"Executing: CREATE DATABASE {db_name}")
                 conn.execute(text(f"CREATE DATABASE {db_name}"))
                 conn.commit()
+                logger.info(f"Successfully created database: {db_name}")
             admin_engine.dispose()
 
         except Exception as e:
             # Log the error but don't fail - the database might already exist or creation might not be allowed
-            import logging
             logger = logging.getLogger(__name__)
-            logger.warning(f"Could not ensure database exists: {e}")
+            logger.error(f"Could not ensure database exists: {e}", exc_info=True)
 
     def _ensure_pg_trgm_extension(self):
         """Ensure pg_trgm extension is enabled."""
