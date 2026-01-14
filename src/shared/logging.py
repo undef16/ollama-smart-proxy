@@ -10,7 +10,7 @@ class LoggingManager:
     """Manager for logging setup and logger retrieval."""
 
     @classmethod
-    def setup_logging(cls, level: str = "INFO") -> None:
+    def setup_logging(cls, level: str = "DEBUG") -> None:
         """Setup structured logging for the application.
 
         Args:

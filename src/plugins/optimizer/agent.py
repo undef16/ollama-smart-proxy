@@ -42,9 +42,11 @@ class OptimizerAgent(BaseAgent):
                          If None, creates from config using DatabaseFactory.
         """
         self.logger = LoggingManager.get_logger(__name__)
+        self.logger.info("DEBUG: OptimizerAgent.__init__ starting...")
 
         # Load configuration
         self.config = ConfigurationManager.get_config()
+        self.logger.info("DEBUG: Configuration loaded")
 
         # Use provided repository or create from config
         if repository is not None:

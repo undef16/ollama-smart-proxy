@@ -54,6 +54,11 @@ class PluginRegistry:
                 self.logger.debug(f"No agent.py file found in {plugin_dir.name}, skipping")
                 continue
 
+            # Special logging for optimizer
+            if plugin_dir.name == "optimizer":
+                self.logger.info(f"DEBUG: Found optimizer plugin directory: {plugin_dir}")
+                self.logger.info(f"DEBUG: Optimizer agent file exists: {agent_file.exists()}")
+
             self.logger.info(f"Loading modules from plugin directory: {plugin_dir.name}")
             # Load all .py files in the plugin directory as modules
             py_files = list(plugin_dir.glob("*.py"))
@@ -95,6 +100,9 @@ class PluginRegistry:
             agent_class = None
             attributes = dir(agent_module)
             self.logger.debug(f"Module {expected_module_name} contains {len(attributes)} attributes: {attributes[:10]}{'...' if len(attributes) > 10 else ''}")
+
+            if plugin_dir.name == "optimizer":
+                self.logger.info(f"DEBUG: Optimizer module attributes: {[attr for attr in attributes if not attr.startswith('_')]}")
             
             # Import BaseAgent directly from the same module where agent_module was loaded from
             # to ensure we're comparing against the same class definition
@@ -108,7 +116,7 @@ class PluginRegistry:
                     # We'll check both the direct subclass relationship and by name/module inspection
                     actual_base_agent = BaseAgent
                     is_subclass_result = issubclass(attr, actual_base_agent) if attr != actual_base_agent else False
-                    
+
                     # If the standard issubclass check failed, let's also check by looking at the MRO directly
                     if not is_subclass_result and attr != actual_base_agent:
                         # Check if BaseAgent appears in the MRO of this class
@@ -117,11 +125,16 @@ class PluginRegistry:
                             if mro_class.__name__ == actual_base_agent.__name__ and mro_class.__module__.endswith(actual_base_agent.__module__):
                                 is_subclass_result = True
                                 break
-                    
+
+                    if plugin_dir.name == "optimizer":
+                        self.logger.info(f"DEBUG: Checking optimizer class {attr_name}: issubclass={is_subclass_result}, MRO={[cls.__name__ for cls in attr.__mro__]}")
+
                     self.logger.debug(f"Checking if {attr_name} ({attr}) is subclass of BaseAgent: {is_subclass_result}, BaseAgent from current context: {actual_base_agent}")
                     # Exclude the BaseAgent class itself, only allow actual agent implementations
                     if is_subclass_result and attr != actual_base_agent and attr.__name__ != 'BaseAgent':
                         self.logger.info(f"Found agent class {attr.__name__} in module {expected_module_name}")
+                        if plugin_dir.name == "optimizer":
+                            self.logger.info(f"DEBUG: Found optimizer agent class: {attr.__name__}")
                         agent_class = attr
                         break
 
@@ -158,12 +171,12 @@ class PluginRegistry:
 
             # Instantiate and register
             try:
-                self.logger.debug(f"Instantiating agent class: {agent_class.__name__}")
+                self.logger.info(f"Instantiating agent class: {agent_class.__name__} from plugin: {plugin_dir.name}")
                 agent_instance = agent_class()
                 self.logger.info(f"Successfully created agent instance with name: '{agent_instance.name}' from class: {agent_class.__name__}")
                 self._agents[agent_instance.name] = agent_instance
             except Exception as e:
-                self.logger.error(f"Failed to instantiate agent from class {agent_class.__name__}: {str(e)}", stack_info=True)
+                self.logger.error(f"Failed to instantiate agent from class {agent_class.__name__} in plugin {plugin_dir.name}: {str(e)}", stack_info=True, exc_info=True)
                 pass
 
     def get_agent(self, name: str) -> Optional[BaseAgent]:
