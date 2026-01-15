@@ -7,7 +7,7 @@
   "agent_command_pattern": "^\\s*/(\\w+)\\s*",
   "server_host": "0.0.0.0",
   "server_port": 11555,
-  "proxy_host_url": "http://192.168.1.195",
+  "proxy_host_url": "http://localhost",
   "library_log_levels": {
     "uvicorn": "WARNING",
     "uvicorn.access": "WARNING",
