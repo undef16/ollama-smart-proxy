@@ -240,15 +240,23 @@ class BaseChain(ABC):
             # Get content for parsing
             content = self.get_content_for_agent_parsing(request)
             cleaned_content, agent_names = self._parse_slash_commands(content)
-            self.update_content_in_context(context, cleaned_content)
             agents_to_execute = list(agent_names)
             context[AGENTS_FIELD] = agents_to_execute
+            context['_original_content'] = content  # Store original content for agents that need it
 
             if agents_to_execute:
                 self.logger.info(f"Activating agents: {agents_to_execute}")
 
             # Execute agent chain on request
             context = await self._execute_agent_chain_on_request(agents_to_execute, context)
+
+            # Update content in context after agent processing
+            self.update_content_in_context(context, cleaned_content)
+
+            # Check if an agent returned a response directly (e.g., MoA agent)
+            if "choices" in context or "response" in context or "message" in context:
+                self.logger.info(f"Agent returned response directly, skipping Ollama forward")
+                return context
 
             # Forward to Ollama
             self.logger.debug(f"Forwarding request to Ollama for model: {context.get(MODEL_FIELD)}")

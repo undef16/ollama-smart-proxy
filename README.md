@@ -165,6 +165,13 @@ Retrieval-Augmented Generation plugin that enhances AI responses by retrieving r
 
 See [`src/plugins/rag/README.md`](src/plugins/rag/README.md) for details.
 
+### MoA Plugin
+Mixture of Agents plugin that enhances response quality by leveraging multiple Ollama models to generate responses, evaluating their quality through peer ranking, and selecting the best response based on aggregated scores.
+
+**Usage:** `/moa Explain quantum computing in simple terms`
+
+See [`src/plugins/moa/README.md`](src/plugins/moa/README.md) for details.
+
 
 ## Performance
 

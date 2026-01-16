@@ -21,7 +21,8 @@ LIBRARY_LOG_LEVELS = {
     "uvicorn": "WARNING",
     "uvicorn.access": "WARNING",
     "fastapi": "WARNING",
-    "httpx": "WARNING"
+    "httpx": "WARNING",
+    "httpcore": "WARNING"
 }
 
 # HTTP status codes

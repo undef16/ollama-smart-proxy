@@ -33,8 +33,8 @@ optimizer = [
 rag = [
     "lightrag",
     "langgraph",
-    "langchain",
-    "langchain_ollama",
+    "langchain>=0.2.0,<0.3.0",
+    "langchain_ollama>=0.1.0,<0.4.0",
     "pydantic",
     "neo4j",
     "psycopg2-binary",
