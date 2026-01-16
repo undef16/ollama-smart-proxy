@@ -1,0 +1,9 @@
+{
+  "moa_models": ["gemma3:1b", "gemma3:1b", "gemma3:1b"],
+  "timeout": 300,
+  "max_models": 3,
+  "prompts": {
+    "ranking_prompt": "You are evaluating the model's response to the following question:\n\nQuestion: {query}\n\nResponse: {previous_response}\n\nYour task is to evaluate this response and return a score from 0 to 1, where 0 means the response is completely inadequate and 1 means the response is perfect.\n\nProvide your evaluation as a ONLY JSON object with the key 'score' containing the ONLY numerical value.\n\nExample: {{\"score\": 0.75}}",
+    "batch_ranking_prompt": "You are evaluating multiple model responses to the following question:\n\nQuestion: {query}\n\nResponses to evaluate:\n{responses}\n\nYour task is to evaluate each response and return scores from 0 to 1, where 0 means the response is completely inadequate and 1 means the response is perfect.\n\nProvide your evaluation as a JSON array ONLY with objects containing 'response_id' and 'score' fields ONLY without any additional text or score describe.\n\nExample: [{{\"response_id\": 0, \"score\": 0.75}}, {{\"response_id\": 1, \"score\": 0.85}}]"
+  }
+}

@@ -32,152 +32,121 @@ class PluginRegistry:
     def _load_plugins(self) -> None:
         """Scan plugins directory and load agent classes."""
         self.logger.info("Starting plugin loading process...")
+
         config = Config()
-        self.logger.info(f"Configuration loaded. Plugins directory: {config.plugins_dir}, exists: {config.plugins_dir.exists()}")
-        
-        if not config.plugins_dir.exists():
-            self.logger.warning(f"Plugins directory does not exist: {config.plugins_dir}")
+        plugins_dir = config.plugins_dir
+
+        if not plugins_dir.exists():
+            self.logger.warning(f"Plugins directory does not exist: {plugins_dir}")
             return
 
-        plugin_dirs = list(config.plugins_dir.iterdir())
-        self.logger.info(f"Found {len(plugin_dirs)} items in plugins directory: {[p.name for p in plugin_dirs]}")
+        self.logger.info(f"Scanning plugins directory: {plugins_dir}")
+        plugin_dirs = [d for d in plugins_dir.iterdir() if d.is_dir()]
+        self.logger.info(f"Found {len(plugin_dirs)} plugin directories")
 
-        for plugin_dir in config.plugins_dir.iterdir():
-            self.logger.debug(f"Processing plugin directory: {plugin_dir.name}, is_dir: {plugin_dir.is_dir()}")
-            if not plugin_dir.is_dir():
-                self.logger.debug(f"Skipping {plugin_dir.name} as it is not a directory")
-                continue
-
-            agent_file = plugin_dir / AGENT_FILE_NAME
-            self.logger.debug(f"Checking for agent file: {agent_file}, exists: {agent_file.exists()}")
-            if not agent_file.exists():
-                self.logger.debug(f"No agent.py file found in {plugin_dir.name}, skipping")
-                continue
-
-            # Special logging for optimizer
-            if plugin_dir.name == "optimizer":
-                self.logger.info(f"DEBUG: Found optimizer plugin directory: {plugin_dir}")
-                self.logger.info(f"DEBUG: Optimizer agent file exists: {agent_file.exists()}")
-
-            self.logger.info(f"Loading modules from plugin directory: {plugin_dir.name}")
-            # Load all .py files in the plugin directory as modules
-            py_files = list(plugin_dir.glob("*.py"))
-            self.logger.debug(f"Found {len(py_files)} Python files in {plugin_dir.name}: {[f.name for f in py_files]}")
-            
-            for py_file in py_files:
-                if py_file.name == INIT_FILE_NAME:
-                    self.logger.debug(f"Skipping __init__.py in {plugin_dir.name}")
-                    continue
-                    
-                module_name = f"{PLUGINS_DIR_NAME}.{plugin_dir.name}.{py_file.stem}"
-                self.logger.debug(f"Loading module: {module_name} from file: {py_file}")
-                
-                try:
-                    spec = importlib.util.spec_from_file_location(module_name, py_file)
-                    if spec is None or spec.loader is None:
-                        self.logger.warning(f"Could not create spec for module {module_name}, spec: {spec}, loader: {getattr(spec, 'loader', 'N/A')}")
-                        continue
-                        
-                    module = importlib.util.module_from_spec(spec)
-                    sys.modules[spec.name] = module
-                    spec.loader.exec_module(module)
-                    self.logger.debug(f"Successfully loaded module: {module_name}")
-                except Exception as e:
-                    self.logger.error(f"Failed to load module {module_name} from {py_file}: {str(e)}", stack_info=True)
-
-            # The agent module is now loaded as plugins.{plugin_dir.name}.agent
-            expected_module_name = f"{PLUGINS_DIR_NAME}.{plugin_dir.name}.{AGENT_FILE_NAME.split('.')[0]}"
-            self.logger.debug(f"Looking for agent module: {expected_module_name}")
-            agent_module = sys.modules.get(expected_module_name)
-            if agent_module is None:
-                self.logger.warning(f"Agent module {expected_module_name} was not found in sys.modules. Available modules: {[name for name in sys.modules.keys() if PLUGINS_DIR_NAME in name and plugin_dir.name in name]}")
-                continue
-            else:
-                self.logger.info(f"Successfully found agent module: {expected_module_name}")
-
-            # Find agent class in the agent module
-            self.logger.debug(f"Searching for agent class in module: {expected_module_name}")
-            agent_class = None
-            attributes = dir(agent_module)
-            self.logger.debug(f"Module {expected_module_name} contains {len(attributes)} attributes: {attributes[:10]}{'...' if len(attributes) > 10 else ''}")
-
-            if plugin_dir.name == "optimizer":
-                self.logger.info(f"DEBUG: Optimizer module attributes: {[attr for attr in attributes if not attr.startswith('_')]}")
-            
-            # Import BaseAgent directly from the same module where agent_module was loaded from
-            # to ensure we're comparing against the same class definition
-            from .base_agent import BaseAgent
-            
-            for attr_name in attributes:
-                attr = getattr(agent_module, attr_name)
-                if isinstance(attr, type):
-                    # To handle the import path issue, we need to check if this class
-                    # actually inherits from BaseAgent by checking its MRO (Method Resolution Order)
-                    # We'll check both the direct subclass relationship and by name/module inspection
-                    actual_base_agent = BaseAgent
-                    is_subclass_result = issubclass(attr, actual_base_agent) if attr != actual_base_agent else False
-
-                    # If the standard issubclass check failed, let's also check by looking at the MRO directly
-                    if not is_subclass_result and attr != actual_base_agent:
-                        # Check if BaseAgent appears in the MRO of this class
-                        mro = attr.__mro__
-                        for mro_class in mro:
-                            if mro_class.__name__ == actual_base_agent.__name__ and mro_class.__module__.endswith(actual_base_agent.__module__):
-                                is_subclass_result = True
-                                break
-
-                    if plugin_dir.name == "optimizer":
-                        self.logger.info(f"DEBUG: Checking optimizer class {attr_name}: issubclass={is_subclass_result}, MRO={[cls.__name__ for cls in attr.__mro__]}")
-
-                    self.logger.debug(f"Checking if {attr_name} ({attr}) is subclass of BaseAgent: {is_subclass_result}, BaseAgent from current context: {actual_base_agent}")
-                    # Exclude the BaseAgent class itself, only allow actual agent implementations
-                    if is_subclass_result and attr != actual_base_agent and attr.__name__ != 'BaseAgent':
-                        self.logger.info(f"Found agent class {attr.__name__} in module {expected_module_name}")
-                        if plugin_dir.name == "optimizer":
-                            self.logger.info(f"DEBUG: Found optimizer agent class: {attr.__name__}")
-                        agent_class = attr
-                        break
-
-            if agent_class is None:
-                # Let's get more detailed info about classes in the module
-                available_classes = []
-                for name in attributes:
-                    attr = getattr(agent_module, name)
-                    if isinstance(attr, type):
-                        # Check against the BaseAgent loaded in the current context
-                        actual_base_agent = BaseAgent
-                        is_subclass_result = issubclass(attr, actual_base_agent) if attr != actual_base_agent else False
-                        
-                        # If the standard check failed, try the MRO approach
-                        if not is_subclass_result and attr != actual_base_agent:
-                            mro = attr.__mro__
-                            for mro_class in mro:
-                                if mro_class.__name__ == actual_base_agent.__name__ and mro_class.__module__.endswith(actual_base_agent.__module__):
-                                    is_subclass_result = True
-                                    break
-                        
-                        # Exclude the BaseAgent class itself when reporting available classes
-                        if attr != actual_base_agent and attr.__name__ != 'BaseAgent':
-                            available_classes.append((name, is_subclass_result))
-                        self.logger.debug(f"Class {name} ({attr}) subclass check: {is_subclass_result}, BaseAgent: {actual_base_agent}, same object: {attr is actual_base_agent}")
-                
-                self.logger.warning(f"No agent class found in module {expected_module_name}. Available classes: {available_classes}")
-                self.logger.warning(f"BaseAgent in current context: {BaseAgent}, module: {BaseAgent.__module__}, id: {id(BaseAgent)}")
-                # Check if there's a BaseAgent in the agent module that might be different
-                if hasattr(agent_module, 'BaseAgent'):
-                    module_base_agent = getattr(agent_module, 'BaseAgent')
-                    self.logger.warning(f"BaseAgent in agent module: {module_base_agent}, module: {module_base_agent.__module__}, id: {id(module_base_agent)}, same as current: {module_base_agent is BaseAgent}")
-                continue
-
-            # Instantiate and register
+        for plugin_dir in plugin_dirs:
             try:
-                self.logger.info(f"Instantiating agent class: {agent_class.__name__} from plugin: {plugin_dir.name}")
-                agent_instance = agent_class()
-                self.logger.info(f"Successfully created agent instance with name: '{agent_instance.name}' from class: {agent_class.__name__}")
-                self._agents[agent_instance.name] = agent_instance
+                self._load_single_plugin(plugin_dir)
             except Exception as e:
-                self.logger.error(f"Failed to instantiate agent from class {agent_class.__name__} in plugin {plugin_dir.name}: {str(e)}", stack_info=True, exc_info=True)
-                pass
+                self.logger.error(f"Failed to load plugin from {plugin_dir.name}: {e}", exc_info=True)
+                continue
+
+    def _load_single_plugin(self, plugin_dir: Path) -> None:
+        """Load a single plugin from the given directory."""
+        plugin_name = plugin_dir.name
+        self.logger.info(f"Loading plugin: {plugin_name}")
+
+        # Validate plugin structure
+        agent_file = plugin_dir / AGENT_FILE_NAME
+        if not agent_file.exists():
+            self.logger.debug(f"No {AGENT_FILE_NAME} found in {plugin_name}, skipping")
+            return
+
+        # Load the agent module
+        module_name = f"{PLUGINS_DIR_NAME}.{plugin_name}.agent"
+        try:
+            agent_module = self._load_module(module_name, agent_file)
+        except Exception as e:
+            self.logger.error(f"Failed to load agent module for {plugin_name}: {e}")
+            return
+
+        # Find and validate agent class
+        try:
+            agent_class = self._find_agent_class(agent_module, plugin_name)
+        except Exception as e:
+            self.logger.error(f"Failed to find agent class in {plugin_name}: {e}")
+            return
+
+        # Instantiate and register agent
+        try:
+            self._instantiate_and_register_agent(agent_class, plugin_name)
+        except Exception as e:
+            self.logger.error(f"Failed to instantiate agent for {plugin_name}: {e}")
+
+    def _load_module(self, module_name: str, file_path: Path) -> object:
+        """Load a Python module from file."""
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if spec is None or spec.loader is None:
+            raise ValueError(f"Could not create module spec for {module_name}")
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+
+        self.logger.debug(f"Successfully loaded module: {module_name}")
+        return module
+
+    def _find_agent_class(self, agent_module: object, plugin_name: str) -> type:
+        """Find the agent class in the loaded module."""
+        from .base_agent import BaseAgent
+
+        # Get all classes from the module
+        classes = [
+            obj for name, obj in vars(agent_module).items()
+            if isinstance(obj, type) and
+               obj != BaseAgent and
+               name != 'BaseAgent' and
+               self._is_base_agent_subclass(obj, BaseAgent)
+        ]
+
+        if not classes:
+            available_classes = [
+                (name, self._is_base_agent_subclass(obj, BaseAgent))
+                for name, obj in vars(agent_module).items()
+                if isinstance(obj, type) and obj != BaseAgent
+            ]
+            raise ValueError(f"No valid agent class found. Available classes: {available_classes}")
+
+        if len(classes) > 1:
+            self.logger.warning(f"Multiple agent classes found in {plugin_name}, using first: {[cls.__name__ for cls in classes]}")
+
+        agent_class = classes[0]
+        self.logger.info(f"Found agent class: {agent_class.__name__} in plugin: {plugin_name}")
+        return agent_class
+
+    def _is_base_agent_subclass(self, cls: type, base_agent: type) -> bool:
+        """Check if a class is a subclass of BaseAgent, handling import path issues."""
+        try:
+            return issubclass(cls, base_agent)
+        except TypeError:
+            # Handle cases where issubclass fails due to import path differences
+            # Check MRO for BaseAgent by name and module
+            for mro_class in cls.__mro__:
+                if (mro_class.__name__ == base_agent.__name__ and
+                    mro_class.__module__.endswith(base_agent.__module__.split('.')[-1])):
+                    return True
+            return False
+
+    def _instantiate_and_register_agent(self, agent_class: type, plugin_name: str) -> None:
+        """Instantiate an agent class and register it."""
+        agent_instance = agent_class()
+        agent_name = agent_instance.name
+
+        if agent_name in self._agents:
+            raise ValueError(f"Agent with name '{agent_name}' already exists")
+
+        self._agents[agent_name] = agent_instance
+        self.logger.info(f"Successfully registered agent: {agent_name} from plugin: {plugin_name}")
 
     def get_agent(self, name: str) -> Optional[BaseAgent]:
         """Get an agent instance by name."""

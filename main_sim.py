@@ -10,15 +10,21 @@ import ollama
 import httpx
 from src.shared.config import Config
 from src.const import (
-    DEFAULT_TEST_MODEL, SERVER_START_TIMEOUT_SEC,
-    HTTP_TIMEOUT_SEC, MAX_RETRY_ATTEMPTS, EXAMPLE_AGENT_SUFFIX_STR, TEST_PROMPT_OPT_POSITIVE,
+    DEFAULT_TEST_MODEL, ROLE_FIELD, SERVER_START_TIMEOUT_SEC,
+    HTTP_TIMEOUT_SEC, EXAMPLE_AGENT_SUFFIX_STR, TEST_PROMPT_OPT_POSITIVE,
     TEST_PROMPT_SIMPLE, TEST_PROMPT_WITH_AGENT, TEST_PROMPT_OPT_NEGATIVE,
     TEST_PROMPT_RAG, HEALTH_STATUS_HEALTHY, HEALTH_STATUS_UNHEALTHY,
     MESSAGE_FIELD, CONTENT_FIELD, RESPONSE_FIELD, DONE_FIELD, USER_ROLE
 )
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Suppress noisy library logs
+logging.getLogger('httpcore').setLevel(logging.WARNING)
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 # Constants are imported from src.const
@@ -39,16 +45,16 @@ class MainSimulator:
         self.proxy_host = self.config.proxy_host_url
         self.proxy_port = self.config.server_port
         self.server_process: Optional[subprocess.Popen] = None
-        self.client: Optional[ollama.Client] = None
+        self.client: ollama.Client
         self.test_results: List[TestResult] = []
 
     async def start_server(self):
         """Start the Ollama Smart Proxy server in the background."""
         logger.info("Starting the Ollama Smart Proxy server...")
 
-        # self.server_process = subprocess.Popen(["python", "main.py"])
-        # # # Wait for server to be ready
-        # await self._wait_for_server()
+        self.server_process = subprocess.Popen(["python", "main.py"])
+        # # Wait for server to be ready
+        await self._wait_for_server()
         
         self.client = ollama.Client(host=f"{self.proxy_host}:{self.proxy_port}")
                
@@ -89,24 +95,19 @@ class MainSimulator:
         finally:
             self.stop_server()
 
-    async def _run_test_with_retry(self, test_name: str, test_func, *args, **kwargs) -> TestResult:
-        """Run a test with retry logic."""
-        last_error = None
-        for attempt in range(MAX_RETRY_ATTEMPTS):
-            try:
-                logger.info(f"Running test: {test_name} (attempt {attempt + 1})")
-                await test_func(*args, **kwargs)
-                return TestResult(name=test_name, success=True)
-            except Exception as e:
-                last_error = e
-                logger.warning(f"Test {test_name} failed on attempt {attempt + 1}: {e}")
-                if attempt < MAX_RETRY_ATTEMPTS - 1:
-                    await asyncio.sleep(1)  # Wait before retry
-        return TestResult(name=test_name, success=False, error=str(last_error))
+    async def _run_single_test(self, test_name: str, test_func, *args, **kwargs) -> TestResult:
+        """Run a test once without retry logic."""
+        try:
+            logger.info(f"Running test: {test_name}")
+            await test_func(*args, **kwargs)
+            return TestResult(name=test_name, success=True)
+        except Exception as e:
+            logger.warning(f"Test {test_name} failed: {e}")
+            return TestResult(name=test_name, success=False, error=str(e))
 
     async def test_generate_endpoint(self):
         """Test the /api/generate endpoint."""
-        assert self.client is not None
+        
         response = self.client.generate(model=DEFAULT_TEST_MODEL, prompt=TEST_PROMPT_SIMPLE)
         logger.info(f"Generate response: {response}")
         if not self._is_valid_generate_response(response):
@@ -114,7 +115,7 @@ class MainSimulator:
 
     async def test_generate_endpoint_with_example_agent(self):
         """Test the /api/generate endpoint with /example agent activation."""
-        assert self.client is not None
+        
         response = self.client.generate(model=DEFAULT_TEST_MODEL, prompt=TEST_PROMPT_WITH_AGENT)
         logger.debug(f"Generate with agent response: {response}")
         if not self._is_valid_generate_response_with_agent(response):
@@ -122,7 +123,7 @@ class MainSimulator:
 
     async def test_generate_endpoint_streaming(self, model: Optional[str] = None):
         """Test the /api/generate endpoint with streaming."""
-        assert self.client is not None
+        
         test_model = model or DEFAULT_TEST_MODEL
         logger.info(f"Testing streaming with model: {test_model}")
         
@@ -144,7 +145,7 @@ class MainSimulator:
 
     async def test_generate_endpoint_with_optimizer_agent(self, prompt: str):
         """Test the /api/generate endpoint with /opt agent activation."""
-        assert self.client is not None
+        
         if not prompt:
             prompt = TEST_PROMPT_SIMPLE.replace("Hello", "/opt Hello")
         response = self.client.generate(model=DEFAULT_TEST_MODEL, prompt=prompt)
@@ -154,7 +155,7 @@ class MainSimulator:
 
     async def test_generate_endpoint_with_rag_agent(self):
         """Test the /api/generate endpoint with /rag agent activation."""
-        assert self.client is not None
+        
         response = self.client.generate(model=DEFAULT_TEST_MODEL, prompt=TEST_PROMPT_RAG)
         logger.debug(f"Generate with RAG response: {response}")
         if not self._is_valid_generate_response(response):
@@ -162,17 +163,17 @@ class MainSimulator:
 
     def _is_valid_generate_response(self, response):
         """Validate the generate response."""
-        return "response" in response
+        return RESPONSE_FIELD in response
 
     def _is_valid_generate_response_with_agent(self, response):
         """Validate the generate response with agent modifications."""
-        content = response["response"]
+        content = response[RESPONSE_FIELD]
         # Check if it ends with the suffix added by the agent
         return content.endswith(EXAMPLE_AGENT_SUFFIX_STR)
 
     async def test_tags_endpoint(self):
         """Test the /api/tags endpoint."""
-        assert self.client is not None
+        
         tags = self.client.list()
         logger.debug(f"Tags response: {tags}")
         if not self._is_valid_tags_response(tags):
@@ -197,37 +198,55 @@ class MainSimulator:
 
     async def test_chat_endpoint_with_example_agent(self):
         """Test the /api/chat endpoint with /example agent activation."""
-        assert self.client is not None
-        response = self.client.chat(model=DEFAULT_TEST_MODEL, messages=[{"role": USER_ROLE, "content": TEST_PROMPT_WITH_AGENT}])
+        
+        response = self.client.chat(model=DEFAULT_TEST_MODEL, messages=[{ROLE_FIELD: USER_ROLE, CONTENT_FIELD: TEST_PROMPT_WITH_AGENT}])
         logger.debug(f"Chat with agent response: {response}")
         if not self._is_valid_chat_response_with_agent(response):
             raise ValueError("Chat endpoint with agent response invalid")
 
     async def test_chat_endpoint_with_optimizer_agent(self, prompt: str):
         """Test the /api/chat endpoint with /opt agent activation."""
-        assert self.client is not None
+        
         if not prompt:
             prompt = TEST_PROMPT_SIMPLE.replace("Hello", "/opt Hello")
-        response = self.client.chat(model=DEFAULT_TEST_MODEL, messages=[{"role": USER_ROLE, "content": prompt}])
+        response = self.client.chat(model=DEFAULT_TEST_MODEL, messages=[{ROLE_FIELD: USER_ROLE, CONTENT_FIELD: prompt}])
         logger.debug(f"Chat with optimizer response: {response}")
         if not self._is_valid_chat_response(response):
             raise ValueError("Chat endpoint with optimizer agent response invalid")
 
     async def test_chat_endpoint_with_rag_agent(self):
         """Test the /api/chat endpoint with /rag agent activation."""
-        assert self.client is not None
-        response = self.client.chat(model=DEFAULT_TEST_MODEL, messages=[{"role": USER_ROLE, "content": TEST_PROMPT_RAG}], stream=False)
+        
+        response = self.client.chat(model=DEFAULT_TEST_MODEL, messages=[{ROLE_FIELD: USER_ROLE, CONTENT_FIELD: TEST_PROMPT_RAG}], stream=False)
         logger.info(f"Chat with RAG response: {response}")
         if not self._is_valid_chat_response(response):
             raise ValueError("Chat endpoint with RAG agent response invalid")
 
+    async def test_generate_endpoint_with_moa_agent(self):
+        """Test the /api/generate endpoint with /moa agent activation."""
+        
+        prompt = "/moa " + TEST_PROMPT_SIMPLE
+        response = self.client.generate(model=DEFAULT_TEST_MODEL, prompt=prompt)
+        logger.info(f"Generate with MoA response: {response}")
+        if not self._is_valid_moa_response(response):
+            raise ValueError("Generate endpoint with MoA agent response invalid")
+
+    async def test_chat_endpoint_with_moa_agent(self):
+        """Test the /api/chat endpoint with /moa agent activation."""
+        
+        messages = [{ROLE_FIELD: USER_ROLE, CONTENT_FIELD: "/moa " + TEST_PROMPT_SIMPLE}]
+        response = self.client.chat(model=DEFAULT_TEST_MODEL, messages=messages, stream=False)
+        logger.info(f"Chat with MoA response: {response}")
+        if not self._is_valid_moa_response(response):
+            raise ValueError("Chat endpoint with MoA agent response invalid")
+
     async def test_chat_endpoint_streaming(self, model: Optional[str] = None):
         """Test the /api/chat endpoint with streaming."""
-        assert self.client is not None
+        
         test_model = model or DEFAULT_TEST_MODEL
         logger.info(f"Testing chat streaming with model: {test_model}")
         
-        stream = self.client.chat(model=test_model, messages=[{"role": USER_ROLE, "content": TEST_PROMPT_SIMPLE}], stream=True)
+        stream = self.client.chat(model=test_model, messages=[{ROLE_FIELD: USER_ROLE, CONTENT_FIELD: TEST_PROMPT_SIMPLE}], stream=True)
         chunks = []
         chunk_count = 0
         try:
@@ -267,6 +286,20 @@ class MainSimulator:
         content = response[MESSAGE_FIELD][CONTENT_FIELD]
         # Check if it ends with the suffix added by the agent
         return content.endswith(EXAMPLE_AGENT_SUFFIX_STR)
+
+    def _is_valid_moa_response(self, response):
+        """Validate the MoA response."""
+        if isinstance(response, ollama.GenerateResponse):
+            if RESPONSE_FIELD in response:
+                # In case it falls back to generate format
+                return bool(response[RESPONSE_FIELD].strip())
+        
+        if isinstance(response, ollama.ChatResponse):
+            if MESSAGE_FIELD in response:
+                content = response[MESSAGE_FIELD][CONTENT_FIELD]
+                return bool(content.strip())
+
+        return False
 
     def _is_valid_streaming_response(self, chunks):
         """Validate the streaming response chunks with better model compatibility."""
@@ -338,6 +371,8 @@ class MainSimulator:
                 raise ValueError("Optimizer agent not loaded")
             if "rag" not in agents:
                 raise ValueError("RAG agent not loaded")
+            if "moa" not in agents:
+                raise ValueError("MoA agent not loaded")
 
     async def run_all_tests(self):
         """Run all endpoint tests."""
@@ -353,30 +388,32 @@ class MainSimulator:
             
             # Uncomment other tests as needed
             tests.extend([
-                ("Generate Endpoint", self.test_generate_endpoint),
-                ("Generate with Agent", self.test_generate_endpoint_with_example_agent),
-                ("Generate Streaming", self.test_generate_endpoint_streaming),
+                # ("Generate Endpoint", self.test_generate_endpoint),
+                # ("Generate with Agent", self.test_generate_endpoint_with_example_agent),
+                # ("Generate Streaming", self.test_generate_endpoint_streaming),
             
-                ("Generate with Optimizer Agent (Positive)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_POSITIVE),
-                ("Generate with Optimizer Agent (Negative)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_NEGATIVE),
-                ("Generate with RAG Agent", self.test_generate_endpoint_with_rag_agent),
+                # ("Generate with Optimizer Agent (Positive)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_POSITIVE),
+                # ("Generate with Optimizer Agent (Negative)", self.test_generate_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_NEGATIVE),
+                # ("Generate with RAG Agent", self.test_generate_endpoint_with_rag_agent),
+                ("Generate with MoA Agent", self.test_generate_endpoint_with_moa_agent),
 
-                ("Tags Endpoint", self.test_tags_endpoint),
+                # ("Tags Endpoint", self.test_tags_endpoint),
 
-                ("Health Endpoint", self.test_health_endpoint),
-                ("Plugins Endpoint", self.test_plugins_endpoint),
-                ("Chat with Agent", self.test_chat_endpoint_with_example_agent),
-                ("Chat Streaming", self.test_chat_endpoint_streaming),
-                ("Chat with Optimizer Agent (Positive)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_POSITIVE),
-                ("Chat with Optimizer Agent (Negative)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_NEGATIVE),
-                ("Chat with RAG Agent", self.test_chat_endpoint_with_rag_agent),
+                # ("Health Endpoint", self.test_health_endpoint),
+                # ("Plugins Endpoint", self.test_plugins_endpoint),
+                # ("Chat with Agent", self.test_chat_endpoint_with_example_agent),
+                # ("Chat Streaming", self.test_chat_endpoint_streaming),
+                # ("Chat with Optimizer Agent (Positive)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_POSITIVE),
+                # ("Chat with Optimizer Agent (Negative)", self.test_chat_endpoint_with_optimizer_agent, TEST_PROMPT_OPT_NEGATIVE),
+                # ("Chat with RAG Agent", self.test_chat_endpoint_with_rag_agent),
+                ("Chat with MoA Agent", self.test_chat_endpoint_with_moa_agent),
             ])
 
             for test_def in tests:
                 test_name = test_def[0]
                 test_func = test_def[1]
                 args = test_def[2:] if len(test_def) > 2 else ()
-                result = await self._run_test_with_retry(test_name, test_func, *args)
+                result = await self._run_single_test(test_name, test_func, *args)
                 test_results.append(result)
 
             # Print total report

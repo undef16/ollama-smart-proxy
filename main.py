@@ -1,5 +1,10 @@
 """Main entry point for the Ollama Smart Proxy."""
 
+import logging
+
+# Suppress httpcore debug logs before any imports
+logging.getLogger('httpcore').setLevel(logging.WARNING)
+
 from fastapi import FastAPI
 
 from src.shared.config import Config
